@@ -222,7 +222,7 @@ function initAbout() {
     <div class="reveal" data-delay="2">
       <h3 style="font-size: var(--text-display-sm); margin-bottom: var(--space-6);">Our story</h3>
       <div class="space-y-6 text-lg text-muted-fg leading-relaxed">
-        <p>Adplix Media was founded in 2025 by Mohamed Aashiq and Barani Dharan with a vision to help brands grow in the digital world.</p>
+        <p>Adplix Media was founded in 2025 by Mohamed Aashiq and Baranidharan with a vision to help brands grow in the digital world.</p>
         <p>Starting from scratch, we built our expertise in social media marketing and performance ads by working closely with businesses and understanding what truly drives results.</p>
         <p>Today, we focus on helping brands scale faster with smart strategies, creative content, and consistent execution — no fluff, just outcomes.</p>
       </div>
@@ -324,7 +324,7 @@ function initAbout() {
           </picture>
         </div>
         <div class="founder-info">
-          <h4 class="founder-name">Barani Dharan</h4>
+          <h4 class="founder-name">Baranidharan</h4>
           <p class="founder-role">Founder</p>
         </div>
       </article>
