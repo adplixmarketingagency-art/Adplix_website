@@ -1,0 +1,459 @@
+/* ==========================================================================
+   Adplix Media — Motion System
+   Animations, Transitions, Keyframes, IntersectionObserver Helpers
+   ========================================================================== */
+
+/* -----------------------------------------------------------------------
+   Entrance Choreography — Hero
+   ----------------------------------------------------------------------- */
+.hero-entrance {
+  --stagger-base: 100ms;
+}
+
+.hero-entrance > *:nth-child(1) { transition-delay: calc(0 * var(--stagger-base)); }
+.hero-entrance > *:nth-child(2) { transition-delay: calc(1 * var(--stagger-base)); }
+.hero-entrance > *:nth-child(3) { transition-delay: calc(2 * var(--stagger-base)); }
+.hero-entrance > *:nth-child(4) { transition-delay: calc(3 * var(--stagger-base)); }
+.hero-entrance > *:nth-child(5) { transition-delay: calc(4 * var(--stagger-base)); }
+.hero-entrance > *:nth-child(6) { transition-delay: calc(5 * var(--stagger-base)); }
+
+/* -----------------------------------------------------------------------
+   Keyframe Animations
+   ----------------------------------------------------------------------- */
+
+/* Marquee — Infinite horizontal scroll */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* Reveal up — Scroll entrance */
+@keyframes revealUp {
+  0% { opacity: 0; transform: translateY(40px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Fade in */
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* Scale in */
+@keyframes scaleIn {
+  0% { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Blob float + morph */
+@keyframes blobFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -30px) scale(1.05); }
+  66% { transform: translate(-20px, 20px) scale(0.95); }
+}
+
+@keyframes blobMorph {
+  0%, 100% { border-radius: 40% 60% 70% 30% / 40% 40% 60% 50%; }
+  34% { border-radius: 70% 30% 50% 50% / 50% 60% 40% 60%; }
+  67% { border-radius: 100% 60% 60% 100% / 100% 100% 60% 60%; }
+}
+
+/* Text shimmer */
+@keyframes textShimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Card lift on hover */
+@keyframes cardLift {
+  0% { transform: translateY(0) scale(1); box-shadow: var(--shadow-md); }
+  100% { transform: translateY(-8px) scale(1.01); box-shadow: var(--shadow-xl); }
+}
+
+/* Image reveal with clip-path */
+@keyframes imageReveal {
+  0% { clip-path: inset(0 100% 0 0); }
+  100% { clip-path: inset(0 0 0 0); }
+}
+
+/* Counter animation */
+@keyframes countUp {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Spin for loading */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Bounce for scroll indicator */
+@keyframes bounce {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(8px); }
+}
+
+/* Pulse for badge dot */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.9); }
+}
+
+/* Line draw for process connection */
+@keyframes lineDraw {
+  0% { stroke-dashoffset: 100%; }
+  100% { stroke-dashoffset: 0%; }
+}
+
+/* Modal open */
+@keyframes modalOpen {
+  0% { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* -----------------------------------------------------------------------
+   Utility Animation Classes
+   ----------------------------------------------------------------------- */
+
+/* Marquee track */
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 40s linear infinite;
+  will-change: transform;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+/* Blob animations */
+.animate-blob {
+  animation: blobFloat 20s ease-in-out infinite, blobMorph 24s ease-in-out infinite alternate;
+}
+
+.animate-blob-delayed {
+  animation-delay: 7s, 8s;
+}
+
+/* Text shimmer */
+.animate-text-shimmer {
+  background: linear-gradient(90deg, var(--color-primary), var(--color-primary-glow), var(--color-primary));
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: textShimmer 3s ease-in-out infinite;
+}
+
+/* Scroll reveal — base */
+.reveal {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.8s var(--ease-out-expo), transform 0.8s var(--ease-out-expo);
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Slide from right — used for solutions */
+.slide-from-right {
+  opacity: 0;
+  transform: translateX(200vw) !important;
+  background: rgba(255,0,0,0.5) !important;
+  transition: opacity 0.8s var(--ease-out-expo) !important, transform 0.8s var(--ease-out-expo) !important;
+}
+.slide-from-right.visible {
+  opacity: 1;
+  transform: translateX(0) !important;
+  background: rgba(255,0,0,0.5) !important;
+}
+
+/* Stagger delays for scroll reveals */
+.reveal-stagger-1 { transition-delay: 100ms; }
+.reveal-stagger-2 { transition-delay: 200ms; }
+.reveal-stagger-3 { transition-delay: 300ms; }
+.reveal-stagger-4 { transition-delay: 400ms; }
+.reveal-stagger-5 { transition-delay: 500ms; }
+.reveal-stagger-6 { transition-delay: 600ms; }
+.reveal-stagger-7 { transition-delay: 700ms; }
+.reveal-stagger-8 { transition-delay: 800ms; }
+
+/* Image reveal with clip-path */
+.image-reveal {
+  overflow: hidden;
+}
+
+.image-reveal img {
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 1.2s var(--ease-out-expo);
+}
+
+.image-reveal.visible img {
+  clip-path: inset(0 0 0 0);
+}
+
+/* Counter animation */
+.counter-animate {
+  animation: countUp 2s var(--ease-out-expo) forwards;
+}
+
+/* -----------------------------------------------------------------------
+   Hover/Mouse Interactions
+   ----------------------------------------------------------------------- */
+
+/* Magnetic button effect (applied via JS) */
+.btn-magnetic {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.btn-magnetic:active {
+  transform: scale(0.98);
+}
+
+/* Card lift */
+.card-interactive {
+  transition: transform var(--duration-normal) var(--ease-out-expo), box-shadow var(--duration-normal) var(--ease-out-expo);
+}
+
+.card-interactive:hover {
+  transform: translateY(-8px) scale(1.01);
+  box-shadow: var(--shadow-xl);
+}
+
+/* Service card icon animation */
+.service-card__icon {
+  transition: transform var(--duration-normal) var(--ease-spring), border-color var(--duration-normal) var(--ease-out);
+}
+
+.service-card:hover .service-card__icon {
+  transform: scale(1.1) rotate(3deg);
+}
+
+/* Work card media hover */
+.work-card__media {
+  transition: transform var(--duration-slow) var(--ease-out), box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.work-card:hover .work-card__media {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.work-card__image {
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+
+.work-card__video {
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+
+.work-card:hover .work-card__image {
+  opacity: 0;
+}
+
+.work-card:hover .work-card__video {
+  opacity: 1;
+}
+
+.work-card__overlay {
+  transition: opacity var(--duration-normal) var(--ease-out);
+}
+
+.work-card:hover .work-card__overlay {
+  opacity: 1;
+}
+
+/* Work showcase item hover */
+/* Work media motion is defined in layout.css so the image-to-video crossfade
+   remains stable and the fixed 16:9 frame never shifts on hover. */
+
+/* Work link arrow */
+.work-link svg {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.work-link:hover svg {
+  transform: translateX(6px);
+}
+
+/* Founder portrait */
+.founder-portrait img {
+  transition: transform var(--duration-cinematic) var(--ease-out-expo), filter var(--duration-slow) var(--ease-out);
+  filter: grayscale(100%);
+}
+
+.founder-portrait:hover img {
+  transform: scale(1.03);
+  filter: grayscale(0%);
+}
+
+.founder-portrait::after {
+  transition: opacity var(--duration-normal) var(--ease-out);
+}
+
+.founder-portrait:hover::after {
+  opacity: 1;
+}
+
+/* Social icons */
+.founder-social a,
+.footer-social a {
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+/* Nav link underline */
+.nav-link::after {
+  transition: width var(--duration-normal) var(--ease-out-expo);
+}
+
+/* Scroll progress */
+.scroll-progress {
+  transition: transform 75ms linear;
+}
+
+/* Nav scroll state */
+.nav {
+  transition: background var(--duration-normal) var(--ease-out), border-color var(--duration-normal) var(--ease-out);
+}
+
+/* Mobile menu hamburger */
+.nav__toggle-icon,
+.nav__toggle-icon::before,
+.nav__toggle-icon::after {
+  transition: transform var(--duration-normal) var(--ease-spring), background var(--duration-fast) var(--ease-out);
+}
+
+/* Modal */
+.modal-overlay {
+  transition: opacity var(--duration-normal) var(--ease-out), visibility var(--duration-normal);
+}
+
+.modal-content {
+  transition: transform var(--duration-normal) var(--ease-out-expo);
+}
+
+.modal-close {
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+}
+
+/* Form inputs */
+.form-input {
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out);
+}
+
+/* Button transitions */
+.btn {
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+/* Footer links */
+.footer-link,
+.footer-contact a,
+.footer-nav a {
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+/* Contact info items */
+.contact-info-item {
+  transition: all var(--duration-normal) var(--ease-out);
+}
+
+.contact-info-icon {
+  transition: all var(--duration-normal) var(--ease-out);
+}
+
+/* Newsletter form */
+.newsletter-form .form-input,
+.newsletter-form .btn {
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+/* -----------------------------------------------------------------------
+   Reduced Motion
+   ----------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  /* Disable all non-essential animations */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* Marquee: pause by default, play on hover (user opts in) */
+  .marquee-track {
+    animation-play-state: paused;
+  }
+
+  .marquee-track:hover {
+    animation-play-state: running;
+  }
+
+  /* Reveal: instant */
+  .reveal,
+  .image-reveal img {
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: inset(0 0 0 0) !important;
+    transition: none !important;
+  }
+
+  /* Modals, overlays, modals */
+  .modal-overlay,
+  .modal-content,
+  .modal-close,
+  .nav,
+  .nav__toggle-icon,
+  .nav__toggle-icon::before,
+  .nav__toggle-icon::after,
+  .nav__link::after,
+  .btn,
+  .card,
+  .service-card__icon,
+  .work-card__media,
+  .work-card__image,
+  .work-card__video,
+  .work-card__overlay,
+  .founder-portrait img,
+  .founder-portrait::after,
+  .scroll-progress,
+  .btn-magnetic {
+    transition: none !important;
+  }
+
+  /* Disable hover transforms */
+  .card-interactive:hover,
+  .service-card:hover .service-card__icon,
+  .work-card:hover .work-card__media,
+  .work-item:hover .work-media,
+  .founder-portrait:hover img,
+  .btn:hover {
+    transform: none !important;
+  }
+
+  /* Counter animation */
+  .counter-animate {
+    animation: none !important;
+  }
+
+  /* Scroll behavior */
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* -----------------------------------------------------------------------
+   Print Styles
+   ----------------------------------------------------------------------- */
+@media print {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

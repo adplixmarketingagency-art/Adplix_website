@@ -1,0 +1,23 @@
+/* ==========================================================================
+   Adplix Media — Main Stylesheet
+   Imports all modular CSS files in dependency order
+   ========================================================================== */
+
+/* 1. Design Tokens — Colors, Typography, Spacing, etc. */
+@import './tokens.css';
+
+/* 2. Base — Reset, Typography, Utilities */
+@import './base.css';
+
+/* 3. Layout — Containers, Grids, Section Patterns, Responsive */
+@import './layout.css';
+
+/* 4. Components — Buttons, Forms, Nav, Cards, Modals */
+@import './components.css';
+
+/* 5. Motion — Animations, Transitions, Keyframes */
+@import './motion.css';
+
+/* ==========================================================================
+   End of main.css
+   ========================================================================== */

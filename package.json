@@ -1,0 +1,17 @@
+{
+  "name": "adplix-media",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:preview": "npm run build && wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "@cloudflare/kv-asset-handler": "^0.4.2",
+    "vite": "^5.0.0",
+    "wrangler": "^4.86.0"
+  }
+}
