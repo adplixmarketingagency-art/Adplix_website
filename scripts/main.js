@@ -251,7 +251,7 @@ function initAbout() {
       <article class="founder-portrait image-reveal reveal" data-delay="4" role="listitem">
         <picture>
           <source srcset="${ASSETS.images.founder2}" type="image/webp">
-          <img src="IMG_3074.JPG.jpeg" alt="Barani Dharan, Founder of Adplix Media" loading="lazy" />
+          <img src="IMG_3074.JPG.jpeg" alt="Baranidharan, Founder of Adplix Media" loading="lazy" />
         </picture>
       </article>
       </div>
@@ -261,7 +261,7 @@ function initAbout() {
           <p class="founder-role">Founder</p>
           <div class="founder-social">
             <a href="https://www.instagram.com/adplixmedia?igsh=MXhyc2w5Mnhob3Z6" target="_blank" rel="noopener noreferrer" aria-label="Barani Dharan on Instagram"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="20" x="2" y="2" rx="5" ry="5" /><path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37zM17.5 6.5h.01" /></svg></a>
-            <a href="https://www.linkedin.com" target="_blank" rel="noopener noreferrer" aria-label="Barani Dharan on LinkedIn"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6zM2 9h4v12H2z" /><circle cx="4" cy="4" r="2" /></svg></a>
+            <a href="https://www.linkedin.com" target="_blank" rel="noopener noreferrer" aria-label="Baranidharan on LinkedIn"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6zM2 9h4v12H2z" /><circle cx="4" cy="4" r="2" /></svg></a>
           </div>
         </div>
     </>
