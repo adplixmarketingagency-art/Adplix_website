@@ -212,19 +212,21 @@ function initAbout() {
   if (!container) return;
 
   container.innerHTML = `
-    <div class="pull-quote reveal" data-delay="1">
+   
+    <div class="reveal" data-delay="2">
+      <h3 style="font-size: var(--text-display-sm); margin-bottom: var(--space-6);">Our story</h3>
+      <div class="space-y-6 text-lg text-muted-fg leading-relaxed">
+        <p>Adplix Media was founded in 2025 by Mohamed Aashiq and Baranidharan with a vision to help brands grow in the digital world.</p>
+        <p>Starting from scratch, we built our expertise in social media marketing and performance ads by working closely with businesses and understanding what truly drives results.</p>
+        <p>Today, we focus on helping brands scale faster with smart strategies, creative content, and consistent execution — no fluff, just outcomes.</p><br>
+
+         <div class="pull-quote reveal" data-delay="1">
       <div class="pull-quote__mark" aria-hidden="true">"</div>
       <blockquote>
         <p>"To make every brand unmissable in the digital world — regardless of size or budget."</p>
         <cite>— Our Mission</cite>
       </blockquote>
     </div>
-    <div class="reveal" data-delay="2">
-      <h3 style="font-size: var(--text-display-sm); margin-bottom: var(--space-6);">Our story</h3>
-      <div class="space-y-6 text-lg text-muted-fg leading-relaxed">
-        <p>Adplix Media was founded in 2025 by Mohamed Aashiq and Baranidharan with a vision to help brands grow in the digital world.</p>
-        <p>Starting from scratch, we built our expertise in social media marketing and performance ads by working closely with businesses and understanding what truly drives results.</p>
-        <p>Today, we focus on helping brands scale faster with smart strategies, creative content, and consistent execution — no fluff, just outcomes.</p>
       </div>
     </div>
     <div class="founders-grid founders-grid--legacy" role="list">
