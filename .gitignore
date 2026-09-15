@@ -1,1 +1,33 @@
+# Local project metadata
 .superdesign
+
+# Dependencies
+node_modules/
+
+# Build output
+/dist/
+/.vite/
+/.wrangler/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# IDE settings
+.vscode/
+.idea/
+
