@@ -5,24 +5,24 @@
 
 :root {
   /* -----------------------------------------------------------------------
-     Color System — Monochrome + Single Accent
+     Color System — Ravensgate dark theatrical (Adplix: crimson stage)
      ----------------------------------------------------------------------- */
-  --color-neutral-950: hsl(0 30% 4%);
-  --color-neutral-900: hsl(0 30% 8%);
-  --color-neutral-800: hsl(0 18% 16%);
-  --color-neutral-700: hsl(0 15% 35%);
-  --color-neutral-600: hsl(0 12% 45%);
-  --color-neutral-500: hsl(0 12% 50%);
-  --color-neutral-400: hsl(0 10% 65%);
-  --color-neutral-300: hsl(0 10% 75%);
-  --color-neutral-200: hsl(0 8% 85%);
-  --color-neutral-100: hsl(0 8% 92%);
-  --color-neutral-50: hsl(0 5% 97%);
+  --color-neutral-950: #0c0a0b;   /* warm black — page ground */
+  --color-neutral-900: #171316;   /* elevated dark plum — raised surfaces */
+  --color-neutral-800: #201a1d;
+  --color-neutral-700: #4a4145;
+  --color-neutral-600: #6b5f64;
+  --color-neutral-500: #a2969a;   /* muted mauve-grey — secondary text */
+  --color-neutral-400: #a2969a;
+  --color-neutral-300: #cfc5c0;
+  --color-neutral-200: #ded5cd;
+  --color-neutral-100: #ece4d9;
+  --color-neutral-50: #f3eadb;    /* parchment — primary text on dark */
   --color-white: #ffffff;
 
-  --color-primary: hsl(0 84% 50%);
-  --color-primary-glow: hsl(8 100% 60%);
-  --color-primary-deep: hsl(0 75% 32%);
+  --color-primary: #b3121f;       /* crimson */
+  --color-primary-glow: #d92c38;  /* lit crimson */
+  --color-primary-deep: #6a0a12;  /* shadow red */
 
   /* Spec.md color aliases */
   --neutral-950: var(--color-neutral-950);
@@ -37,14 +37,14 @@
   --primary-glow: var(--color-primary-glow);
   --primary-deep: var(--color-primary-deep);
 
-  /* Semantic aliases */
-  --color-bg: var(--color-neutral-50);
-  --color-bg-alt: var(--color-neutral-100);
+  /* Semantic aliases — dark theatrical ground, parchment ink */
+  --color-bg: var(--color-neutral-950);
+  --color-bg-alt: var(--color-neutral-900);
   --color-bg-dark: var(--color-neutral-950);
-  --color-fg: var(--color-neutral-900);
-  --color-fg-muted: var(--color-neutral-700);
-  --color-border: var(--color-neutral-300);
-  --color-border-strong: var(--color-neutral-400);
+  --color-fg: var(--color-neutral-50);
+  --color-fg-muted: var(--color-neutral-500);
+  --color-border: rgba(243, 234, 219, 0.16);
+  --color-border-strong: rgba(243, 234, 219, 0.32);
 
   --color-accent: var(--color-primary);
   --color-accent-glow: var(--color-primary-glow);
@@ -52,8 +52,9 @@
   /* -----------------------------------------------------------------------
      Typography Scale — Fluid with clamp()
      ----------------------------------------------------------------------- */
-  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-display: 'Instrument Serif', 'Space Grotesk', system-ui, serif;
   --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
 
   --text-display-hero: clamp(64px, 14vw, 140px);
   --text-display-xl: clamp(48px, 10vw, 96px);

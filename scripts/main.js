@@ -172,13 +172,31 @@ function initSolutions() {
 
   container.innerHTML = solutions.map((s, i) => `
     <article class="solution-item reveal" data-delay="${i + 1}" role="listitem">
-      <span class="solution-number">${s.number}</span>
+      <span class="solution-number" aria-hidden="true">${s.number}</span>
       <div class="solution-content">
-        <h3 class="solution-title">${s.title}</h3>
-        <p class="solution-description">${s.description}</p>
+        <h3 class="solution-title">
+          <button type="button" class="solution-toggle" aria-expanded="false" aria-controls="solution-panel-${i}">
+            ${s.title}
+            <span class="solution-toggle-icon" aria-hidden="true"></span>
+          </button>
+        </h3>
+        <div class="solution-panel" id="solution-panel-${i}" role="region" aria-label="${s.title} summary">
+          <div class="solution-panel-inner">
+            <p class="solution-description">${s.description}</p>
+          </div>
+        </div>
       </div>
     </article>
   `).join('');
+
+  // Tap and keyboard toggle; hover expansion is CSS-only on pointer devices
+  container.querySelectorAll('.solution-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const expanded = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!expanded));
+      btn.closest('.solution-item').classList.toggle('is-open', !expanded);
+    });
+  });
 }
 
 // ===== PROCESS / APPROACH =====
