@@ -42,6 +42,20 @@
   transform: translateY(0) scale(0.98);
 }
 
+/* Primary CTA — crimson block, square edges */
+.btn--primary {
+  border-radius: 0;
+  background: var(--color-primary);
+  color: var(--color-neutral-50);
+  box-shadow: none;
+}
+
+.btn--primary:hover {
+  background: var(--color-primary-glow);
+  box-shadow: none;
+  transform: none;
+}
+
 /* Secondary — Outline */
 .btn--secondary {
   background: transparent;
@@ -151,16 +165,14 @@
   left: 0;
   right: 0;
   z-index: var(--z-fixed);
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--color-border);
-  transition: all var(--duration-normal) var(--ease-out);
+  background: var(--color-bg);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--duration-normal) var(--ease-out);
   width: 100%;
   max-width: 100vw;
 }
 
 .nav--scrolled {
-  background: rgba(255, 255, 255, 0.95);
   border-bottom-color: var(--color-border);
 }
 
@@ -188,13 +200,13 @@
 .nav__logo-mark {
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-xl);
+  border-radius: 0;
   background-color: var(--color-primary);
   background-image: url('../favicon.svg');
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  box-shadow: 0 4px 12px hsla(5, 84%, 45%, 0.25);
+  box-shadow: none;
   flex-shrink: 0;
 }
 
@@ -208,7 +220,7 @@
 
 @media (max-width: 639px) {
   .nav__logo-text {
-    display: none;
+    font-size: 18px;
   }
 }
 
@@ -326,8 +338,7 @@
 
 /* Mobile menu panel */
 .nav__mobile {
-  /* The nav's backdrop filter establishes a containing block, so use viewport
-     dimensions explicitly instead of relying on fixed inset positioning. */
+  /* Cover the viewport while keeping the panel anchored to the fixed nav. */
   position: absolute;
   top: 0;
   left: 0;
@@ -335,7 +346,7 @@
   height: 100dvh;
   min-height: 100vh;
   z-index: var(--z-modal);
-  background: var(--color-white);
+  background: var(--color-bg);
   padding: var(--space-12) var(--section-padding-x);
   display: none;
   flex-direction: column;
@@ -437,7 +448,7 @@
 
 .form-input {
   width: 100%;
-  background: var(--color-white);
+  background: var(--color-bg-alt);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: var(--space-4) var(--space-5);
@@ -507,7 +518,7 @@ textarea.form-input {
    Cards
    ----------------------------------------------------------------------- */
 .card {
-  background: var(--color-white);
+  background: var(--color-bg-alt);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2xl);
   overflow: hidden;
@@ -597,7 +608,7 @@ textarea.form-input {
 /* Testimonial/Insight card */
 .card-insight {
   padding: var(--space-8);
-  background: var(--color-white);
+  background: var(--color-bg-alt);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2xl);
   transition: all var(--duration-normal) var(--ease-out);
@@ -755,7 +766,7 @@ textarea.form-input {
   aspect-ratio: 1;
   border-radius: 50%;
   overflow: hidden;
-  background: var(--color-white);
+  background: var(--color-bg-alt);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-sm);
   transition: all var(--duration-normal) var(--ease-out);
