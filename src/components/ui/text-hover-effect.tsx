@@ -14,8 +14,12 @@ export function TextHoverEffect({ text, className = '' }: { text: string; classN
   const cx = useSpring(x, { stiffness: 190, damping: 30 })
   const cy = useSpring(y, { stiffness: 190, damping: 30 })
   const textProps = {
-    x: '50%', y: '54%', textAnchor: 'middle' as const,
-    dominantBaseline: 'middle' as const, textLength: '930', lengthAdjust: 'spacingAndGlyphs' as const,
+    x: '50%',
+    y: '54%',
+    textAnchor: 'middle' as const,
+    dominantBaseline: 'middle' as const,
+    textLength: '930',
+    lengthAdjust: 'spacingAndGlyphs' as const,
   }
 
   function followPointer(event: PointerEvent<SVGSVGElement>) {
@@ -34,7 +38,12 @@ export function TextHoverEffect({ text, className = '' }: { text: string; classN
       aria-hidden="true"
       focusable="false"
       onPointerMove={followPointer}
-      onPointerLeave={() => { if (!reducedMotion) { x.set(500); y.set(80) } }}
+      onPointerLeave={() => {
+        if (!reducedMotion) {
+          x.set(500)
+          y.set(80)
+        }
+      }}
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
@@ -51,7 +60,9 @@ export function TextHoverEffect({ text, className = '' }: { text: string; classN
           <rect width="1000" height="160" fill={`url(#${id}-reveal)`} />
         </mask>
       </defs>
-      <text {...textProps} className="cc-hover-ink" fill="#999">{text}</text>
+      <text {...textProps} className="cc-hover-ink" fill="#999">
+        {text}
+      </text>
       <motion.text
         {...textProps}
         className="cc-hover-outline"
@@ -64,8 +75,14 @@ export function TextHoverEffect({ text, className = '' }: { text: string; classN
         animate={reducedMotion ? { strokeDashoffset: 0 } : undefined}
         viewport={{ once: true, amount: 0.2 }}
         transition={{ duration: reducedMotion ? 0 : 2.2, ease: 'easeInOut' }}
-      >{text}</motion.text>
-      {!reducedMotion && <text {...textProps} className="cc-hover-ink" fill={`url(#${id}-ink)`} mask={`url(#${id}-mask)`}>{text}</text>}
+      >
+        {text}
+      </motion.text>
+      {!reducedMotion && (
+        <text {...textProps} className="cc-hover-ink" fill={`url(#${id}-ink)`} mask={`url(#${id}-mask)`}>
+          {text}
+        </text>
+      )}
     </svg>
   )
 }

@@ -50,8 +50,10 @@ export default function DotOrb() {
     function paint(dt = 0) {
       const yaw = 0.3 + time * 0.12
       const pitch = -0.15
-      const cosY = Math.cos(yaw), sinY = Math.sin(yaw)
-      const cosX = Math.cos(pitch), sinX = Math.sin(pitch)
+      const cosY = Math.cos(yaw),
+        sinY = Math.sin(yaw)
+      const cosX = Math.cos(pitch),
+        sinX = Math.sin(pitch)
       const radius = Math.min(width, height) * 0.4 * (1 + Math.sin(time * 0.65) * 0.018)
       ctx.clearRect(0, 0, width, height)
       for (const dot of dots) {
@@ -125,14 +127,20 @@ export default function DotOrb() {
       const bounds = canvas.getBoundingClientRect()
       const x = event.clientX - bounds.left
       const y = event.clientY - bounds.top
-      pointer = x >= 0 && y >= 0 && x < bounds.width && y < bounds.height
-        ? { x: x * width / bounds.width, y: y * height / bounds.height }
-        : null
+      pointer =
+        x >= 0 && y >= 0 && x < bounds.width && y < bounds.height
+          ? { x: (x * width) / bounds.width, y: (y * height) / bounds.height }
+          : null
     }
-    function leave() { pointer = null }
+    function leave() {
+      pointer = null
+    }
     const resizeObserver = new ResizeObserver(resize)
     resizeObserver.observe(canvas)
-    const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; sync() })
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting
+      sync()
+    })
     observer.observe(canvas)
     host?.addEventListener('pointermove', move)
     host?.addEventListener('pointerleave', leave)

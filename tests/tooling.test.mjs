@@ -11,14 +11,24 @@ test('local dev denies private files, untrusted hosts and cross-origin reads', a
   assert.equal(config.server.host, '127.0.0.1')
   assert.equal(config.server.cors, false)
   assert.notEqual(config.server.allowedHosts, true)
-  assert.ok(config.server.allowedHosts.every(host => host === '127.0.0.1' || host === 'localhost'))
+  assert.ok(config.server.allowedHosts.every((host) => host === '127.0.0.1' || host === 'localhost'))
   assert.equal(config.preview.host, '127.0.0.1')
   assert.equal(config.preview.cors, false)
   const root = await mkdtemp(join(tmpdir(), 'adplix-security-'))
   let server
   try {
     for (const folder of ['.opencode', '.claude', '.git']) await mkdir(join(root, folder))
-    const privateFiles = ['.env', '.env.local', '.dev.vars', '.dev.vars.local', '.opencode/example.md', '.claude/example.md', '.git/config', 'example.log', 'example.pem']
+    const privateFiles = [
+      '.env',
+      '.env.local',
+      '.dev.vars',
+      '.dev.vars.local',
+      '.opencode/example.md',
+      '.claude/example.md',
+      '.git/config',
+      'example.log',
+      'example.pem',
+    ]
     for (const file of privateFiles) await writeFile(join(root, file), 'synthetic-private-fixture')
     await writeFile(join(root, 'public.txt'), 'safe-public-fixture')
     server = await createServer({
@@ -45,7 +55,7 @@ test('local dev denies private files, untrusted hosts and cross-origin reads', a
     assert.equal(await normal.text(), 'safe-public-fixture')
     assert.equal(normal.headers.get('Access-Control-Allow-Origin'), null)
     const untrustedStatus = await new Promise((resolve, reject) => {
-      const req = request(`${base}/public.txt`, { headers: { Host: 'untrusted.example' } }, response => {
+      const req = request(`${base}/public.txt`, { headers: { Host: 'untrusted.example' } }, (response) => {
         response.resume()
         response.on('end', () => resolve(response.statusCode))
       })

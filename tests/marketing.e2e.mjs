@@ -10,6 +10,19 @@ import { securityHeaders } from '../src/security-headers.mjs'
 // requests are blocked so this check cannot send enquiries or subscriptions.
 const server = await preview({
   logLevel: 'warn',
+  plugins: [
+    {
+      name: 'isolated-marketing-portal-api',
+      configurePreviewServer(server) {
+        // Never depend on (or authenticate against) an operator's local D1 server.
+        // The dedicated portal E2E suite verifies actual authenticated workflows.
+        server.middlewares.use('/api/portal', (_request, response) => {
+          response.writeHead(503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+          response.end(JSON.stringify({ error: 'Portal API unavailable in isolated marketing preview.' }))
+        })
+      },
+    },
+  ],
   preview: { host: '127.0.0.1', port: Number(process.env.MARKETING_E2E_PORT || 4174), strictPort: true, open: false },
 })
 const base = `http://127.0.0.1:${server.httpServer.address().port}`
@@ -23,10 +36,12 @@ const errors = []
 
 async function openPage(viewport, reducedMotion = 'reduce') {
   const context = await browser.newContext({ viewport, reducedMotion })
-  await context.route('**/*', route => new URL(route.request().url()).origin === base ? route.continue() : route.abort())
+  await context.route('**/*', (route) =>
+    new URL(route.request().url()).origin === base ? route.continue() : route.abort(),
+  )
   const page = await context.newPage()
-  page.on('pageerror', error => errors.push(error.message))
-  page.on('console', message => {
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => {
     if (/Content Security Policy|violates.*directive|Refused to/.test(message.text())) errors.push(message.text())
   })
   await page.goto(base)
@@ -36,7 +51,10 @@ async function openPage(viewport, reducedMotion = 'reduce') {
 }
 
 async function noOverflow(page) {
-  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), 'No horizontal document overflow')
+  assert.ok(
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+    'No horizontal document overflow',
+  )
 }
 
 async function screenshot(page, name) {
@@ -63,21 +81,35 @@ try {
   browser = await chromium.launch({ headless: true })
   const desktop = await openPage({ width: 1440, height: 1000 })
   await expect(desktop.locator('.hero')).not.toContainText(/let['’]s talk/i)
-  const navbarContact = desktop.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: "Let's talk", exact: true })
+  const navbarContact = desktop
+    .getByRole('navigation', { name: 'Main navigation' })
+    .getByRole('link', { name: "Let's talk", exact: true })
   await expect(navbarContact).toBeVisible()
   await expect(navbarContact).toHaveAttribute('href', '#contact')
-  await expect(desktop.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Employee Portal', exact: true })).toHaveAttribute('href', '/portal/')
+  await expect(
+    desktop
+      .getByRole('navigation', { name: 'Main navigation' })
+      .getByRole('link', { name: 'Employee Portal', exact: true }),
+  ).toHaveAttribute('href', '/portal/')
   await expect(desktop.locator('meta[property="og:title"]')).toHaveAttribute('content', /Adplix/)
   await expect(desktop.locator('meta[name="twitter:card"]')).toHaveAttribute('content', 'summary_large_image')
   await noOverflow(desktop)
-  const layers = await desktop.locator('.hero-space').evaluate(element => {
+  const layers = await desktop.locator('.hero-space').evaluate((element) => {
     const space = element.getBoundingClientRect()
-    return ['canvas.hero-starfield', 'svg.shooting-stars'].map(selector => {
+    return ['canvas.hero-starfield', 'svg.shooting-stars'].map((selector) => {
       const layer = element.querySelector(selector)
       if (!layer) return { selector, missing: true }
       const bounds = layer.getBoundingClientRect()
       const styles = getComputedStyle(layer)
-      return { selector, position: styles.position, pointerEvents: styles.pointerEvents, width: bounds.width, height: bounds.height, spaceWidth: space.width, spaceHeight: space.height }
+      return {
+        selector,
+        position: styles.position,
+        pointerEvents: styles.pointerEvents,
+        width: bounds.width,
+        height: bounds.height,
+        spaceWidth: space.width,
+        spaceHeight: space.height,
+      }
     })
   })
   for (const layer of layers) {
@@ -93,10 +125,20 @@ try {
   await desktop.getByRole('link', { name: 'Explore our work', exact: true }).click()
   await expect(desktop).toHaveURL(/#work$/)
   await expect(desktop.locator('.ws-project')).toHaveCount(4)
-  const workBackground = await desktop.locator('#work').evaluate(element => getComputedStyle(element).backgroundColor)
+  await expect(
+    desktop.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Services', exact: true }),
+  ).toHaveAttribute('href', '#services')
+  await expect(desktop.locator('#services .eyebrow')).toHaveText('Services')
+  await expect(
+    desktop
+      .locator('.ws-project')
+      .filter({ has: desktop.getByRole('heading', { name: 'Nyo Cafe', exact: true }) })
+      .getByRole('link', { name: 'Inspect case study', exact: true }),
+  ).toHaveAttribute('href', 'https://www.instagram.com/nyocafe/?hl=en')
+  const workBackground = await desktop.locator('#work').evaluate((element) => getComputedStyle(element).backgroundColor)
   assert.equal(workBackground, 'rgb(24, 24, 24)', 'Selected Work uses the lighter charcoal surface')
   for (const title of await desktop.locator('.ws-project-title').all()) {
-    const color = await title.evaluate(element => getComputedStyle(element).color.match(/\d+/g).map(Number))
+    const color = await title.evaluate((element) => getComputedStyle(element).color.match(/\d+/g).map(Number))
     assert.ok(color[0] > color[1] * 1.8 && color[0] > color[2] * 1.8, 'Each project title is red')
   }
   await screenshot(desktop, 'marketing-desktop-work')
@@ -111,7 +153,7 @@ try {
   await alignedFounders(desktop)
   for (const image of await desktop.locator('.cc-founder img, .cc-testimonial img').all()) {
     await image.scrollIntoViewIfNeeded()
-    await expect.poll(() => image.evaluate(element => element.complete && element.naturalWidth > 0)).toBe(true)
+    await expect.poll(() => image.evaluate((element) => element.complete && element.naturalWidth > 0)).toBe(true)
   }
   for (const image of await desktop.locator('.cc-testimonial img').all()) {
     await expect(image).toHaveCSS('border-radius', '50%')
@@ -124,7 +166,9 @@ try {
   await expect(desktop.locator('.cc-brand-lockup img')).toHaveCSS('width', '36px')
 
   const submittedRequests = []
-  desktop.on('request', request => { if (request.method() === 'POST') submittedRequests.push(request.url()) })
+  desktop.on('request', (request) => {
+    if (request.method() === 'POST') submittedRequests.push(request.url())
+  })
   const contact = desktop.getByRole('form', { name: 'Growth audit enquiry' })
   await contact.getByRole('button', { name: 'Send message' }).click()
   await expect(contact.getByLabel('Name', { exact: true })).toBeFocused()
@@ -150,15 +194,26 @@ try {
   const firstFilm = desktop.locator('.ws-film-video').first()
   await firstFilm.scrollIntoViewIfNeeded()
   await desktop.locator('.ws-play-control').first().click()
-  await expect.poll(() => firstFilm.evaluate(element => !element.paused), { timeout: 10000 }).toBe(true)
+  await expect.poll(() => firstFilm.evaluate((element) => !element.paused), { timeout: 10000 }).toBe(true)
   await desktop.locator('.ws-play-control').first().click()
-  await expect.poll(() => firstFilm.evaluate(element => element.paused)).toBe(true)
-  const desktopA11y = await new AxeBuilder({ page: desktop }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()
-  assert.deepEqual(desktopA11y.violations.map(violation => ({ id: violation.id, targets: violation.nodes.map(node => node.target) })), [], 'Desktop accessibility')
+  await expect.poll(() => firstFilm.evaluate((element) => element.paused)).toBe(true)
+  const desktopA11y = await new AxeBuilder({ page: desktop })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+    .analyze()
+  assert.deepEqual(
+    desktopA11y.violations.map((violation) => ({
+      id: violation.id,
+      targets: violation.nodes.map((node) => node.target),
+    })),
+    [],
+    'Desktop accessibility',
+  )
 
   const mobile = await openPage({ width: 375, height: 812 })
   await noOverflow(mobile)
-  const mobileNavbarContact = mobile.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: "Let's talk", exact: true })
+  const mobileNavbarContact = mobile
+    .getByRole('navigation', { name: 'Main navigation' })
+    .getByRole('link', { name: "Let's talk", exact: true })
   await expect(mobileNavbarContact).toBeVisible()
   await expect(mobile.locator('.hero')).not.toContainText(/let['’]s talk/i)
   await screenshot(mobile, 'marketing-mobile-hero')
@@ -169,20 +224,43 @@ try {
   await menu.click()
   const mobileNavigation = mobile.getByRole('navigation', { name: 'Mobile navigation' })
   await expect(mobileNavigation).toBeVisible()
-  await expect(mobileNavigation.getByRole('link', { name: 'Employee Portal', exact: true })).toHaveAttribute('href', '/portal/')
+  await expect(mobileNavigation.getByRole('link', { name: 'Employee Portal', exact: true })).toHaveAttribute(
+    'href',
+    '/portal/',
+  )
   await expect(mobileNavigation).not.toContainText(/let['’]s talk/i)
   await mobileNavigation.getByRole('link', { name: 'Company', exact: true }).click()
   await expect(mobile).toHaveURL(/#company$/)
   await expect(mobileNavigation).not.toBeVisible()
-  await expect.poll(() => mobile.locator('.cc-founder img').first().evaluate(element => element.complete && element.naturalWidth > 0)).toBe(true)
+  await expect
+    .poll(() =>
+      mobile
+        .locator('.cc-founder img')
+        .first()
+        .evaluate((element) => element.complete && element.naturalWidth > 0),
+    )
+    .toBe(true)
   await screenshot(mobile, 'marketing-mobile-founders')
   await menu.click()
   await mobile.keyboard.press('Escape')
   await expect(menu).toBeFocused()
   await expect(mobileNavigation).not.toBeVisible()
-  const mobileA11y = await new AxeBuilder({ page: mobile }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()
-  assert.deepEqual(mobileA11y.violations.map(violation => ({ id: violation.id, targets: violation.nodes.map(node => node.target) })), [], 'Mobile accessibility')
-  for (const viewport of [{ width: 320, height: 568 }, { width: 768, height: 1024 }, { width: 812, height: 375 }]) {
+  const mobileA11y = await new AxeBuilder({ page: mobile })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+    .analyze()
+  assert.deepEqual(
+    mobileA11y.violations.map((violation) => ({
+      id: violation.id,
+      targets: violation.nodes.map((node) => node.target),
+    })),
+    [],
+    'Mobile accessibility',
+  )
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 768, height: 1024 },
+    { width: 812, height: 375 },
+  ]) {
     await mobile.setViewportSize(viewport)
     await noOverflow(mobile)
     if (viewport.width === 768) await alignedFounders(mobile)
@@ -199,18 +277,26 @@ try {
   await menu.click()
   await mobileNavigation.getByRole('link', { name: 'Employee Portal', exact: true }).click()
   await expect(mobile.locator('[data-form="login"]')).toBeVisible()
-  await animated.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Employee Portal', exact: true }).click()
+  await animated
+    .getByRole('navigation', { name: 'Main navigation' })
+    .getByRole('link', { name: 'Employee Portal', exact: true })
+    .click()
   await expect(animated.locator('[data-form="login"]')).toBeVisible()
   await desktop.goto(base + '/portal/')
   await expect(desktop.locator('[data-form="login"]')).toBeVisible()
   await expect(desktop.locator('.site-header, .hero')).toHaveCount(0)
   await noOverflow(desktop)
   const apiResponse = await desktop.request.get(base + '/api/portal/snapshot')
-  assert.ok([401, 503].includes(apiResponse.status()), 'Portal API is denied or safely unavailable, never an HTML fallback')
+  assert.ok(
+    [401, 503].includes(apiResponse.status()),
+    'Portal API is denied or safely unavailable, never an HTML fallback',
+  )
   assert.ok(apiResponse.headers()['content-type'].includes('application/json'))
   assert.deepEqual(errors, [], 'No uncaught JavaScript or CSP errors')
-  console.info('Marketing browser checks passed: six visual edits, assets, playback, forms, navigation, animations, accessibility, responsive layouts, and isolated portal entry.')
+  console.info(
+    'Marketing browser checks passed: six visual edits, assets, playback, forms, navigation, animations, accessibility, responsive layouts, and isolated portal entry.',
+  )
 } finally {
   await browser?.close()
-  await new Promise(resolve => server.httpServer.close(resolve))
+  await new Promise((resolve) => server.httpServer.close(resolve))
 }

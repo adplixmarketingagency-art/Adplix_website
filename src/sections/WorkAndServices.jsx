@@ -18,7 +18,8 @@ const projects = [
   {
     title: "Dr. Shabnam's Personal Branding",
     metric: '4× Revenue · 2.1M Reach',
-    description: 'Full-funnel digital brand authority, educational video storytelling, and patient acquisition strategy that generated a 400% revenue surge.',
+    description:
+      'Full-funnel digital brand authority, educational video storytelling, and patient acquisition strategy that generated a 400% revenue surge.',
     href: 'https://www.instagram.com/dr.shabnams_fertility_center/?hl=en',
     poster: shabnamPoster,
     video: shabnamVideo,
@@ -26,7 +27,8 @@ const projects = [
   {
     title: 'Everglow Makeup Artistry',
     metric: '3.8× Bookings · 180K Community',
-    description: 'Visual identity system, high-converting aesthetic reels, and targeted Instagram campaign architecture elevating booking volume across regions.',
+    description:
+      'Visual identity system, high-converting aesthetic reels, and targeted Instagram campaign architecture elevating booking volume across regions.',
     href: 'https://www.instagram.com/everglow_makeupartistry?igsh=ejNoNDdkd2J1cHdu',
     poster: everglowPoster,
     video: everglowVideo,
@@ -34,7 +36,8 @@ const projects = [
   {
     title: 'Naan Ungal SK',
     metric: '+850K Followers · 15M Views',
-    description: 'Rapid audience growth framework, content production cadence, and cross-channel viral distribution positioning the creator at peak authority.',
+    description:
+      'Rapid audience growth framework, content production cadence, and cross-channel viral distribution positioning the creator at peak authority.',
     href: 'https://www.instagram.com/naan.ungal_sk/',
     poster: skPoster,
     video: skVideo,
@@ -42,7 +45,8 @@ const projects = [
   {
     title: 'Nyo Cafe',
     metric: 'Retail & Brand Marketing',
-    description: 'Scaling a premium cafe brand through high-end cinematic visuals and targeted local awareness campaigns.',
+    description:
+      'Scaling a premium cafe brand through high-end cinematic visuals and targeted local awareness campaigns.',
     href: 'https://www.instagram.com/nyocafe/?hl=en',
     poster: nyoPoster,
     video: nyoVideo,
@@ -64,7 +68,8 @@ const services = [
   },
   {
     title: 'Meta Ads, AI based ads & Performance Marketing',
-    description: 'Meta campaigns, AI-assisted ad concepts, creative testing, and performance review guided by campaign data.',
+    description:
+      'Meta campaigns, AI-assisted ad concepts, creative testing, and performance review guided by campaign data.',
   },
   {
     title: 'Campaign Planning & Creative Advertising',
@@ -85,12 +90,36 @@ const services = [
 ]
 
 const processSteps = [
-  ['01', 'Deep Funnel & Creative Audit', 'We inspect historic ad performance, creative fatigue patterns, and unit economics across all paid channels.'],
-  ['02', 'Bottleneck Deconstruction', 'Pinpointing the exact friction points constraining your customer acquisition and revenue velocity.'],
-  ['03', 'Strategic Growth Roadmap', 'Formulating a high-conviction testing matrix covering creative angles, budget allocation, and target return on ad spend.'],
-  ['04', 'Deliverable Commitments & Projections', 'Locking in explicit deliverables, sprint timelines, and key performance benchmarks, with zero ambiguity.'],
-  ['05', 'Onboarding & Asset Integration', 'Rapid tracking verification, ad account access, and communication channels configured within 48 hours.'],
-  ['06', 'Campaign Launch & Daily Optimization', 'Live campaign deployment followed by rigorous multivariate creative testing and daily performance scaling.'],
+  [
+    '01',
+    'Deep Funnel & Creative Audit',
+    'We inspect historic ad performance, creative fatigue patterns, and unit economics across all paid channels.',
+  ],
+  [
+    '02',
+    'Bottleneck Deconstruction',
+    'Pinpointing the exact friction points constraining your customer acquisition and revenue velocity.',
+  ],
+  [
+    '03',
+    'Strategic Growth Roadmap',
+    'Formulating a high-conviction testing matrix covering creative angles, budget allocation, and target return on ad spend.',
+  ],
+  [
+    '04',
+    'Deliverable Commitments & Projections',
+    'Locking in explicit deliverables, sprint timelines, and key performance benchmarks, with zero ambiguity.',
+  ],
+  [
+    '05',
+    'Onboarding & Asset Integration',
+    'Rapid tracking verification, ad account access, and communication channels configured within 48 hours.',
+  ],
+  [
+    '06',
+    'Campaign Launch & Daily Optimization',
+    'Live campaign deployment followed by rigorous multivariate creative testing and daily performance scaling.',
+  ],
 ]
 
 function ProjectFilm({ project, index }) {
@@ -125,8 +154,13 @@ function ProjectFilm({ project, index }) {
   const rotateY = hoverY
   const number = String(index + 1).padStart(2, '0')
   const videoId = `ws-project-film-${number}`
-  const shouldPlay = frameVisible && pageVisible && !paused && !manualPaused &&
-    (!systemReducedMotion || manuallyStarted) && !playbackError
+  const shouldPlay =
+    frameVisible &&
+    pageVisible &&
+    !paused &&
+    !manualPaused &&
+    (!systemReducedMotion || manuallyStarted) &&
+    !playbackError
   allowedRef.current = shouldPlay
 
   useEffect(() => {
@@ -153,10 +187,12 @@ function ProjectFilm({ project, index }) {
       } else setSourceAttached(true)
       setFrameVisible(visible)
     }
-    const observer = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(
-      ([entry]) => updateFrame(entry.isIntersecting && entry.intersectionRatio >= 0.45),
-      { threshold: [0, 0.45] },
-    )
+    const observer =
+      typeof IntersectionObserver === 'undefined'
+        ? null
+        : new IntersectionObserver(([entry]) => updateFrame(entry.isIntersecting && entry.intersectionRatio >= 0.45), {
+            threshold: [0, 0.45],
+          })
     // The fallback keeps pause-on-scroll working in browsers without IntersectionObserver.
     const checkFrame = () => {
       if (!frame) return
@@ -193,14 +229,23 @@ function ProjectFilm({ project, index }) {
       return
     }
     const request = ++playbackRequest.current
-    video.play().then(() => {
-      if (!mounted.current || request !== playbackRequest.current || !visibleRef.current ||
-          !pageVisibleRef.current || !allowedRef.current) video.pause()
-    }).catch(() => {
-      if (mounted.current && request === playbackRequest.current) {
-        setPlaybackError('The film could not play. Select play to try again.')
-      }
-    })
+    video
+      .play()
+      .then(() => {
+        if (
+          !mounted.current ||
+          request !== playbackRequest.current ||
+          !visibleRef.current ||
+          !pageVisibleRef.current ||
+          !allowedRef.current
+        )
+          video.pause()
+      })
+      .catch(() => {
+        if (mounted.current && request === playbackRequest.current) {
+          setPlaybackError('The film could not play. Select play to try again.')
+        }
+      })
     return () => {
       playbackRequest.current += 1
       video.pause()
@@ -228,10 +273,17 @@ function ProjectFilm({ project, index }) {
     pointerY.set(((event.clientX - rect.left) / rect.width - 0.5) * 3)
   }
 
-  const resetTilt = () => { pointerX.set(0); pointerY.set(0) }
+  const resetTilt = () => {
+    pointerX.set(0)
+    pointerY.set(0)
+  }
 
   return (
-    <article ref={articleRef} className={`ws-project ws-project-${number}`} aria-labelledby={`ws-project-title-${number}`}>
+    <article
+      ref={articleRef}
+      className={`ws-project ws-project-${number}`}
+      aria-labelledby={`ws-project-title-${number}`}
+    >
       <motion.div
         className="ws-film-frame"
         ref={frameRef}
@@ -252,14 +304,18 @@ function ProjectFilm({ project, index }) {
           disablePictureInPicture
           disableRemotePlayback
           controlsList="nodownload nofullscreen noremoteplayback"
-           aria-label={`${project.title} project film`}
-          onPlay={(event) => {
+          aria-label={`${project.title} project film`}
+          onPlay={() => {
             if (!mounted.current) return
             setPlaying(true)
             setPlaybackError('')
           }}
-          onPause={() => { if (mounted.current) setPlaying(false) }}
-          onEnded={() => { if (mounted.current) setPlaying(false) }}
+          onPause={() => {
+            if (mounted.current) setPlaying(false)
+          }}
+          onEnded={() => {
+            if (mounted.current) setPlaying(false)
+          }}
           onError={() => {
             if (!mounted.current) return
             playbackRequest.current += 1
@@ -277,11 +333,17 @@ function ProjectFilm({ project, index }) {
           aria-pressed={playing}
           disabled={paused}
         >
-          {playing ? <Pause size={18} fill="currentColor" aria-hidden="true" /> : <Play size={18} fill="currentColor" aria-hidden="true" />}
+          {playing ? (
+            <Pause size={18} fill="currentColor" aria-hidden="true" />
+          ) : (
+            <Play size={18} fill="currentColor" aria-hidden="true" />
+          )}
         </button>
       </motion.div>
       <motion.div className="ws-project-caption" style={reducedMotion ? undefined : { y: captionY }}>
-        <h3 id={`ws-project-title-${number}`} className="ws-project-title">{project.title}</h3>
+        <h3 id={`ws-project-title-${number}`} className="ws-project-title">
+          {project.title}
+        </h3>
         <p className="ws-project-metric">{project.metric}</p>
         <p className="body-copy">{project.description}</p>
         <div className="ws-project-actions">
@@ -291,7 +353,11 @@ function ProjectFilm({ project, index }) {
             </a>
           )}
         </div>
-        {playbackError && <p className="ws-playback-error" role="status">{playbackError}</p>}
+        {playbackError && (
+          <p className="ws-playback-error" role="status">
+            {playbackError}
+          </p>
+        )}
       </motion.div>
     </article>
   )
@@ -309,7 +375,10 @@ function Services() {
           <h2 id="ws-services-title" className="display-title ws-services-title">
             Full-funnel systems to <span className="ws-red">dominate</span> your market.
           </h2>
-          <p className="body-copy ws-intro">One unified team, full-spectrum execution. We handle every high-leverage growth vector, from viral creative production to algorithmic media buying.</p>
+          <p className="body-copy ws-intro">
+            One unified team, full-spectrum execution. We handle every high-leverage growth vector, from viral creative
+            production to algorithmic media buying.
+          </p>
         </Reveal>
         <ol className="ws-services-list">
           {services.map((service, index) => (
@@ -339,7 +408,10 @@ function Services() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={{ layout: { type: 'spring', stiffness: 270, damping: 28 }, opacity: { duration: 0.18 } }}
+                    transition={{
+                      layout: { type: 'spring', stiffness: 270, damping: 28 },
+                      opacity: { duration: 0.18 },
+                    }}
                     aria-hidden="true"
                   />
                 )}
@@ -364,7 +436,10 @@ function Approach() {
           <h2 id="ws-approach-title" className="display-title ws-process-title">
             A battle-tested process engineered for <span className="ws-red">predictable growth.</span>
           </h2>
-          <p className="body-copy">Our structured six-phase operational protocol guarantees clear milestones, razor-sharp alignment, and rapid time-to-market.</p>
+          <p className="body-copy">
+            Our structured six-phase operational protocol guarantees clear milestones, razor-sharp alignment, and rapid
+            time-to-market.
+          </p>
         </Reveal>
         <TracingBeam className="ws-process-trace">
           <ol className="ws-process-list">
@@ -376,9 +451,11 @@ function Approach() {
                 whileInView={{ opacity: 1, x: 0, y: 0 }}
                 animate={reducedMotion ? { opacity: 1, x: 0, y: 0 } : undefined}
                 viewport={{ once: true, amount: 0.35 }}
-                transition={{ duration: reducedMotion ? 0 : 0.65, delay: reducedMotion ? 0 : index % 2 * 0.09 }}
+                transition={{ duration: reducedMotion ? 0 : 0.65, delay: reducedMotion ? 0 : (index % 2) * 0.09 }}
               >
-                <span className="ws-process-number" aria-hidden="true">{number}</span>
+                <span className="ws-process-number" aria-hidden="true">
+                  {number}
+                </span>
                 <div className="ws-process-step-content">
                   <h3>{title}</h3>
                   <p className="body-copy">{description}</p>
@@ -403,11 +480,16 @@ export default function WorkAndServices() {
               Brands we've scaled to <span className="ws-red">Market Dominance</span>
             </h2>
             <div className="ws-work-intro-row">
-              <p className="body-copy ws-intro">Each project represents an intense partnership built on scientific strategy, cinematic creative, and execution aligned to measurable revenue acceleration.</p>
+              <p className="body-copy ws-intro">
+                Each project represents an intense partnership built on scientific strategy, cinematic creative, and
+                execution aligned to measurable revenue acceleration.
+              </p>
             </div>
           </Reveal>
           <div className="ws-projects">
-            {projects.map((project, index) => <ProjectFilm key={project.title} project={project} index={index} />)}
+            {projects.map((project, index) => (
+              <ProjectFilm key={project.title} project={project} index={index} />
+            ))}
           </div>
         </div>
       </section>

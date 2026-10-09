@@ -18,7 +18,9 @@
   border-top: 1px solid var(--ws-rule);
 }
 
-.ws-work { background: #181818; }
+.ws-work {
+  background: #181818;
+}
 
 .ws-section .shell {
   width: min(100%, 1280px);
@@ -120,7 +122,7 @@
   height: clamp(420px, 44vw, 520px);
   background: #151515;
   border: 1px solid #353535;
-  box-shadow: 0 35px 80px rgba(0, 0, 0, .36);
+  box-shadow: 0 35px 80px rgba(0, 0, 0, 0.36);
   will-change: transform;
 }
 
@@ -180,22 +182,24 @@
   width: 44px;
   height: 44px;
   padding: 0;
-  border: 1px solid rgba(255, 255, 255, .48);
+  border: 1px solid rgba(255, 255, 255, 0.48);
   border-radius: 50%;
-  background: rgba(8, 8, 8, .78);
+  background: rgba(8, 8, 8, 0.78);
   color: #fff;
   cursor: pointer;
-  transition: background-color 250ms, border-color 250ms;
+  transition:
+    background-color 250ms,
+    border-color 250ms;
 }
 
 .ws-play-control:hover:not(:disabled) {
   border-color: #fff;
-  background: rgba(8, 8, 8, .95);
+  background: rgba(8, 8, 8, 0.95);
 }
 
 .ws-play-control:disabled {
   cursor: not-allowed;
-  opacity: .6;
+  opacity: 0.6;
 }
 
 .ws-section .ws-case-link {
@@ -224,7 +228,7 @@
 }
 
 .ws-services-beams {
-  opacity: .4;
+  opacity: 0.4;
   mask-image: linear-gradient(to bottom, transparent, black 18%, black 80%, transparent);
 }
 
@@ -293,7 +297,7 @@
 
 .ws-approach > .shell {
   display: grid;
-  grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr);
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
   gap: clamp(40px, 6vw, 100px);
   align-items: start;
 }

@@ -1,6 +1,6 @@
 # Adplix Employee Portal
 
-Status: working local implementation, with database-backed and browser checks. Not deployed or provisioned for production.
+Status: Worker and production D1 schema deployed. At the 9 October 2026 readiness check the database had no accounts; first Admin provisioning and authenticated production verification remain required. Local database-backed and browser workflows are covered separately.
 
 - [Complete requirements and implementation plan](SPECIFICATION.md)
 - [Security hardening and portal security requirements](SECURITY.md)

@@ -13,6 +13,9 @@ function stop(exitCode = 0) {
   setTimeout(() => process.exit(exitCode), 500)
 }
 
-for (const child of children) child.once('exit', code => { if (!stopping && code) stop(code) })
+for (const child of children)
+  child.once('exit', (code) => {
+    if (!stopping && code) stop(code)
+  })
 process.once('SIGINT', () => stop(0))
 process.once('SIGTERM', () => stop(0))

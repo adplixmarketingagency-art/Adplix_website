@@ -1,7 +1,8 @@
 import { securityHeaders } from './security-headers.mjs'
 import { handlePortalApi } from './portal/api.mjs'
 
-const portalPolicy = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; frame-src 'none'; worker-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; upgrade-insecure-requests"
+const portalPolicy =
+  "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; frame-src 'none'; worker-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; upgrade-insecure-requests"
 
 export default {
   async fetch(request, env, ctx) {
@@ -37,5 +38,5 @@ export default {
       statusText: response.statusText,
       headers,
     })
-  }
+  },
 }

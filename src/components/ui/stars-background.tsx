@@ -6,12 +6,26 @@ import { cn } from '@/lib/utils'
 // https://ui.aceternity.com/components/shooting-stars-and-stars-background
 type Star = { x: number; y: number; radius: number; opacity: number; phase: number; depth: number; red: boolean }
 type Props = {
-  starDensity?: number; allStarsTwinkle?: boolean; twinkleProbability?: number;
-  minTwinkleSpeed?: number; maxTwinkleSpeed?: number; className?: string;
-  interactive?: boolean; paused?: boolean;
+  starDensity?: number
+  allStarsTwinkle?: boolean
+  twinkleProbability?: number
+  minTwinkleSpeed?: number
+  maxTwinkleSpeed?: number
+  className?: string
+  interactive?: boolean
+  paused?: boolean
 }
 
-export function StarsBackground({ starDensity = 0.0006, allStarsTwinkle = true, twinkleProbability = 0.7, minTwinkleSpeed = 0.5, maxTwinkleSpeed = 1, className, interactive = true, paused = false }: Props) {
+export function StarsBackground({
+  starDensity = 0.0006,
+  allStarsTwinkle = true,
+  twinkleProbability = 0.7,
+  minTwinkleSpeed = 0.5,
+  maxTwinkleSpeed = 1,
+  className,
+  interactive = true,
+  paused = false,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { reducedMotion } = useAnimationSettings()
 
@@ -32,7 +46,10 @@ export function StarsBackground({ starDensity = 0.0006, allStarsTwinkle = true, 
     let visible = false
     let seed = 44
     const staticMode = paused || reducedMotion
-    const random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646 }
+    const random = () => {
+      seed = (seed * 16807) % 2147483647
+      return (seed - 1) / 2147483646
+    }
 
     function nebula(x: number, y: number, radius: number, opacity: number) {
       if (!background) return
@@ -56,7 +73,15 @@ export function StarsBackground({ starDensity = 0.0006, allStarsTwinkle = true, 
       backdrop.height = Math.round(height)
       seed = 44
       const count = Math.min(950, Math.max(160, Math.round(width * height * starDensity)))
-      stars = Array.from({ length: count }, () => ({ x: random() * width, y: random() * height, radius: random() * 1.25 + 0.3, opacity: random() * 0.55 + 0.25, phase: random() * Math.PI * 2, depth: random() * 0.8 + 0.2, red: random() > 0.87 }))
+      stars = Array.from({ length: count }, () => ({
+        x: random() * width,
+        y: random() * height,
+        radius: random() * 1.25 + 0.3,
+        opacity: random() * 0.55 + 0.25,
+        phase: random() * Math.PI * 2,
+        depth: random() * 0.8 + 0.2,
+        red: random() > 0.87,
+      }))
       nebula(width * 0.79, height * 0.43, width * 0.38, 0.55)
       nebula(width * 0.59, height * 0.65, width * 0.24, 0.24)
       nebula(width * 0.97, height * 0.16, width * 0.22, 0.48)
@@ -102,7 +127,8 @@ export function StarsBackground({ starDensity = 0.0006, allStarsTwinkle = true, 
         }
         const twinkles = allStarsTwinkle || star.depth < twinkleProbability
         const speed = minTwinkleSpeed + star.depth * (maxTwinkleSpeed - minTwinkleSpeed)
-        const alpha = star.opacity * (staticMode || !twinkles ? 1 : 0.65 + Math.sin(time * 0.00065 / speed + star.phase) * 0.35)
+        const alpha =
+          star.opacity * (staticMode || !twinkles ? 1 : 0.65 + Math.sin((time * 0.00065) / speed + star.phase) * 0.35)
         ctx!.beginPath()
         ctx!.arc(x, y, star.radius, 0, Math.PI * 2)
         ctx!.fillStyle = `rgba(${star.red ? '239, 124, 124' : '235, 235, 235'}, ${alpha})`
@@ -129,7 +155,10 @@ export function StarsBackground({ starDensity = 0.0006, allStarsTwinkle = true, 
     function animate(time: number) {
       frame = 0
       if (!visible || document.hidden || staticMode) return
-      if (time - lastPaint >= 30) { paint(time); lastPaint = time }
+      if (time - lastPaint >= 30) {
+        paint(time)
+        lastPaint = time
+      }
       frame = requestAnimationFrame(animate)
     }
     function sync() {
@@ -142,13 +171,21 @@ export function StarsBackground({ starDensity = 0.0006, allStarsTwinkle = true, 
       const bounds = canvas!.getBoundingClientRect()
       pointer.targetX = event.clientX - bounds.left
       pointer.targetY = event.clientY - bounds.top
-      if (!pointer.inside) { pointer.x = pointer.targetX; pointer.y = pointer.targetY }
+      if (!pointer.inside) {
+        pointer.x = pointer.targetX
+        pointer.y = pointer.targetY
+      }
       pointer.inside = true
     }
-    function leave() { pointer.inside = false }
+    function leave() {
+      pointer.inside = false
+    }
     const resizeObserver = new ResizeObserver(resize)
     resizeObserver.observe(canvas)
-    const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; sync() })
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting
+      sync()
+    })
     observer.observe(canvas)
     host.addEventListener('pointermove', move)
     host.addEventListener('pointerleave', leave)
@@ -162,7 +199,22 @@ export function StarsBackground({ starDensity = 0.0006, allStarsTwinkle = true, 
       host.removeEventListener('pointerleave', leave)
       document.removeEventListener('visibilitychange', sync)
     }
-  }, [starDensity, allStarsTwinkle, twinkleProbability, minTwinkleSpeed, maxTwinkleSpeed, interactive, paused, reducedMotion])
+  }, [
+    starDensity,
+    allStarsTwinkle,
+    twinkleProbability,
+    minTwinkleSpeed,
+    maxTwinkleSpeed,
+    interactive,
+    paused,
+    reducedMotion,
+  ])
 
-  return <canvas ref={canvasRef} aria-hidden="true" className={cn('absolute inset-0 h-full w-full pointer-events-none', className)} />
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      className={cn('absolute inset-0 h-full w-full pointer-events-none', className)}
+    />
+  )
 }

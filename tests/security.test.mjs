@@ -10,7 +10,7 @@ const scriptUrl = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@4.4.1/dist/emai
 test('assets-first headers match the Worker policy exactly', async () => {
   const file = await read('assets/_headers')
   assert.match(file, /^\/\*\n/)
-  const entries = [...file.matchAll(/^  ([\w-]+): (.+)$/gm)]
+  const entries = [...file.matchAll(/^ {2}([\w-]+): (.+)$/gm)]
   assert.equal(entries.length, Object.keys(securityHeaders).length)
   assert.deepEqual(Object.fromEntries(entries.map(([, key, value]) => [key, value])), securityHeaders)
   const config = await read('wrangler.toml')
@@ -20,12 +20,18 @@ test('assets-first headers match the Worker policy exactly', async () => {
 
 test('pinned script, SRI and policy allow required site resources only', async () => {
   const html = await read('index.html')
-  assert.ok(html.includes(`src="${scriptUrl}"`))
-  assert.match(html, /integrity="sha384-SALc35EccAf6RzGw4iNsyj7kTPr33K7RoGzYu\+7heZhT8s0GZouafRiCg1qy44AS" crossorigin="anonymous"/)
-  const directives = Object.fromEntries(securityHeaders['Content-Security-Policy'].split('; ').map(part => {
-    const [name, ...sources] = part.split(' ')
-    return [name, sources]
-  }))
+  const pinnedScript = [...html.matchAll(/<script\b[^>]*>/g)]
+    .map(([tag]) => tag)
+    .find((tag) => tag.includes(`src="${scriptUrl}"`))
+  assert.ok(pinnedScript, 'Pinned script tag exists')
+  assert.match(pinnedScript, /integrity="sha384-SALc35EccAf6RzGw4iNsyj7kTPr33K7RoGzYu\+7heZhT8s0GZouafRiCg1qy44AS"/)
+  assert.match(pinnedScript, /crossorigin="anonymous"/)
+  const directives = Object.fromEntries(
+    securityHeaders['Content-Security-Policy'].split('; ').map((part) => {
+      const [name, ...sources] = part.split(' ')
+      return [name, sources]
+    }),
+  )
   assert.deepEqual(directives['script-src'], ["'self'", scriptUrl])
   assert.deepEqual(directives['frame-src'], ["'none'"])
   assert.deepEqual(directives['worker-src'], ["'none'"])
@@ -53,10 +59,18 @@ test('Worker preserves asset responses including HEAD, range, redirects and cach
   ]) {
     const asset = new Response(body, { status, statusText: 'Asset status', headers: { ...extra, 'X-Asset': 'kept' } })
     const request = new Request('https://example.com/file', { method })
-    const result = await worker.fetch(request, { ASSETS: { fetch: async received => {
-      assert.equal(received, request)
-      return asset
-    } } }, {})
+    const result = await worker.fetch(
+      request,
+      {
+        ASSETS: {
+          fetch: async (received) => {
+            assert.equal(received, request)
+            return asset
+          },
+        },
+      },
+      {},
+    )
     assert.equal(result.status, status)
     assert.equal(result.statusText, 'Asset status')
     assert.equal(await result.text(), body ?? '')

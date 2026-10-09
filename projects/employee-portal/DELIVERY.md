@@ -1,5 +1,19 @@
 # Employee Portal — Delivery and Setup
 
+## Current release readiness (9 October 2026)
+
+The historical notes below describe earlier local-only milestones. The Worker is now deployed to `https://adplixmedia.in/portal/` and `https://withered-pine-ee0b.adplixmarketingagency.workers.dev/portal/`, with the `PORTAL_DB` binding to `adplix-portal`. A read-only production check found zero users and zero tasks. No database reset was performed during cleanup.
+
+- First Admin setup remains a release blocker for real sign-in. Run `npm run portal:admin:setup` privately, use a password of at least 12 characters, then apply the guarded SQL using the printed Wrangler command. Never paste credentials into chat, source files or commit messages. First sign-in requires password rotation.
+- The profile photo layout now clips images correctly, supports 64/96/128-pixel resizing, previews changes, and saves or cancels explicitly. Browser tests exercise both Admin and Employee roles against isolated local D1.
+- ESLint (zero warnings), Prettier, unit/integration tests and both self-building browser suites are exposed through `npm run quality` and `.github/workflows/quality.yml`. Legacy code and original source media were preserved under `archive/`; generated bundles, logs and screenshots are no longer tracked.
+- `npm run deploy:verify -- https://adplixmedia.in` verifies the deployed build and unauthenticated security boundaries without modifying production data. It cannot establish authenticated usability until the Admin is provisioned.
+- Do not treat a successful build, a 200 login-page response, or local synthetic tests as proof that a real production account works.
+
+Local release evidence: clean `npm ci`; `npm run lint` with zero warnings; `npm run format:check`; 106 passing unit/integration tests; both marketing and portal Chromium E2E suites; `npm audit` reporting zero vulnerabilities; and `npm run deploy:preview` packaging with the production D1 binding. The portal E2E suite was explicitly rerun after recovering an interrupted formatting write. Browser runners now require each suite's completion receipt as well as exit status zero.
+
+## Earlier implementation history
+
 7 October 2026. Working local implementation. No commit, push, production database creation, or deployment performed.
 
 ## Delivered functionality

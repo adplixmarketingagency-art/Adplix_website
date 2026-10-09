@@ -5,7 +5,11 @@
   max-width: 100%;
   min-width: 0;
   white-space: nowrap;
-  font-family: 'Geist Variable', system-ui, -apple-system, sans-serif;
+  font-family:
+    'Geist Variable',
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
 .portal-brand .portal-brand-mark,
@@ -23,15 +27,21 @@
   color: #282522;
   font-size: 25px;
   font-weight: 800;
-  letter-spacing: -.055em;
+  letter-spacing: -0.055em;
   line-height: 1;
 }
 
-.portal-brand-media { color: #d63232; }
+.portal-brand-media {
+  color: #d63232;
+}
 
-.portal-brand--auth { margin-bottom: 32px; }
+.portal-brand--auth {
+  margin-bottom: 32px;
+}
 
-.portal-brand--sidebar { gap: 8px; }
+.portal-brand--sidebar {
+  gap: 8px;
+}
 
 .side-brand .portal-brand--sidebar .portal-brand-mark {
   width: 32px;
@@ -44,13 +54,23 @@
 .portal-brand--sidebar .portal-brand-name {
   color: #fff;
   font-size: 17px;
-  letter-spacing: -.055em;
+  letter-spacing: -0.055em;
 }
 
-.portal-brand--sidebar .portal-brand-media { color: #ff5b54; }
+.portal-brand--sidebar .portal-brand-media {
+  color: #ff5b54;
+}
 
 @media (max-width: 380px) {
-  .portal-brand--auth { gap: 8px; }
-  .portal-brand--auth .portal-brand-mark { width: 38px; height: 38px; flex-basis: 38px; }
-  .portal-brand--auth .portal-brand-name { font-size: 21px; }
+  .portal-brand--auth {
+    gap: 8px;
+  }
+  .portal-brand--auth .portal-brand-mark {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
+  .portal-brand--auth .portal-brand-name {
+    font-size: 21px;
+  }
 }

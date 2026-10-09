@@ -1,0 +1,43 @@
+# Dependencies, generated output, and private runtime data
+node_modules/
+dist/
+.worker-dist/
+.portal-dist/
+.portal-local/
+.wrangler/
+.vite/
+.cloudflare/
+.omnirush/
+.opencode/
+.claude/
+.git/
+.env*
+.dev.vars*
+*.log
+*.pem
+*.crt
+
+# Binary media and supplied reference/preview material
+assets/
+projects/
+archive/
+*.md
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.ico
+*.mp4
+*.mov
+*.pdf
+*.docx
+*.xlsx
+*.zip
+*.woff*
+*.ttf
+*.otf
+*.svg
+
+# Machine-managed dependency manifests
+package-lock.json

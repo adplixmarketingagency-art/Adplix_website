@@ -56,19 +56,41 @@ npm run deploy
 .
 ├── index.html
 ├── package.json
-├── spec.md
+├── eslint.config.mjs
+├── .prettierrc.json
 ├── vite.config.js
 ├── wrangler.toml
+├── .github/workflows/quality.yml
+├── archive/             # preserved originals and retired marketing code
 ├── assets/
+├── migrations/          # D1 schema
+├── portal/              # employee portal UI
+├── projects/employee-portal/  # specifications and operator docs
 ├── scripts/
-├── src/
-├── styles/
+├── src/                 # marketing UI and portal Worker API
+├── tests/
 └── README.md
 ```
 
 ## Notes
 
-This project follows a clean static-site structure for fast local preview and production deployment.
+Generated builds (`.worker-dist/`, `.portal-dist/`, `dist/`), logs, local D1 data and browser screenshots are ignored, not source files. Original media and retired code are preserved in `archive/`, never included in the deployment. Do not delete or commit `.portal-local/` or private agent/runtime folders during cleanup.
+
+## Code quality and release gate
+
+```bash
+npm ci
+npm run lint
+npm run format:check
+npm test
+npm run marketing:test:e2e
+npm run portal:test:e2e
+npm audit
+```
+
+`npm run quality` runs lint (zero warnings), formatting, unit/integration tests, and both browser suites sequentially. Both E2E commands rebuild the correct assets first; do not run a build while a browser suite is reading that output. Test screenshots are written to `.portal-local/previews/`. `npm run format` applies the shared source-code style. GitHub Actions runs the same gate on pushes and pull requests without production credentials.
+
+This is ESLint/TypeScript-syntax linting, not a claim of whole-project static type coverage. Do not suppress failing rules or tests to ship a release.
 
 ## Security checks
 
@@ -96,6 +118,10 @@ The source marketing UI lives in `src/App.jsx`, `src/components/`, and `src/sect
 
 ## Employee portal project
 
-The portal has a working **local implementation**, not a live production launch. Requirements are in [projects/employee-portal/SPECIFICATION.md](projects/employee-portal/SPECIFICATION.md); local run and deployment instructions are in [projects/employee-portal/DELIVERY.md](projects/employee-portal/DELIVERY.md). This documentation folder must never contain employee passwords, account exports, or private configuration.
+The portal Worker and D1 schema have been deployed. Production account provisioning and authenticated smoke testing are separate release requirements, not implied by a successful deployment. Requirements are in [projects/employee-portal/SPECIFICATION.md](projects/employee-portal/SPECIFICATION.md); operator instructions and current readiness are in [projects/employee-portal/DELIVERY.md](projects/employee-portal/DELIVERY.md). Never put passwords, account exports, or private configuration in the repository.
 
 With Node 22 active, `npm run portal:build`, `npm run portal:migrate`, and `npm run portal:dev` serve the portal at http://127.0.0.1:8787/portal/. Provision a local Admin as described in the delivery guide. `npm run portal:test:e2e` verifies actual local Cloudflare D1 workflows with isolated synthetic accounts; install Chromium with `npx playwright install chromium` first. It never seeds the production database.
+
+For first production Admin setup, run `npm run portal:admin:setup` **in a private interactive terminal**. Enter the Admin details and a temporary password of at least 12 characters; password entry is hidden. The command creates owner-only, ignored `.portal-local/admin-bootstrap.sql` and prints the exact remote application command. Verify that command changes exactly one row. The guarded SQL refuses to replace existing accounts, and the first login requires a password change. Existing bootstrap files are not overwritten; keep any real credentials/private SQL out of Git and reports.
+
+After `npm run deploy`, run `npm run deploy:verify -- https://adplixmedia.in` to verify exact entry-bundle hashes, security headers, portal routing and unauthenticated API denial. This read-only check does **not** verify a real account login. Complete first sign-in directly at https://adplixmedia.in/portal/ after provisioning.

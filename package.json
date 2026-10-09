@@ -11,20 +11,32 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test tests/*.test.mjs",
-    "marketing:test:e2e": "node tests/marketing.e2e.mjs",
+    "marketing:test:e2e": "node scripts/run-e2e.mjs marketing",
     "portal:build": "vite build --outDir .portal-dist",
     "portal:dev": "wrangler dev --config wrangler.portal.toml --local --port 8787",
     "portal:migrate": "wrangler d1 migrations apply adplix-portal-local --config wrangler.portal.toml --local",
     "portal:bootstrap": "node scripts/portal-bootstrap.mjs",
-    "portal:test:e2e": "node tests/portal.e2e.mjs",
+    "portal:admin:setup": "node scripts/portal-admin-setup.mjs",
+    "portal:test:e2e": "node scripts/run-e2e.mjs portal",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "quality": "npm run lint && npm run format:check && npm test && npm run marketing:test:e2e && npm run portal:test:e2e",
     "deploy": "npm run build && wrangler deploy",
-    "deploy:preview": "npm run build && wrangler deploy --dry-run"
+    "deploy:preview": "npm run build && wrangler deploy --dry-run",
+    "deploy:verify": "node scripts/verify-deployment.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.63.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9",
+    "typescript-eslint": "^8.71.1",
     "vite": "^7.3.7",
-    "wrangler": "^4.148.0"
+    "wrangler": "^4.149.0"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "^2.0.0",

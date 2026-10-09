@@ -22,13 +22,20 @@ export default defineConfig({
   root: '.',
   publicDir: 'assets',
   resolve: { alias: { '@': resolve(import.meta.dirname, 'src') } },
-  plugins: [react(), {
-    name: 'portal-service-worker',
-    apply: 'build',
-    generateBundle() {
-      this.emitFile({ type: 'asset', fileName: 'portal/sw.js', source: readFileSync(new URL('./portal/sw.js', import.meta.url), 'utf8') })
+  plugins: [
+    react(),
+    {
+      name: 'portal-service-worker',
+      apply: 'build',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'portal/sw.js',
+          source: readFileSync(new URL('./portal/sw.js', import.meta.url), 'utf8'),
+        })
+      },
     },
-  }],
+  ],
   server: {
     port: 3000,
     host: '127.0.0.1',
@@ -37,8 +44,19 @@ export default defineConfig({
     open: true,
     proxy: { '/api/portal': portalProxy },
     fs: {
-      deny: ['.env', '.env.*', '*.{crt,pem}', '.dev.vars', '.dev.vars.*', '**/.opencode/**', '**/.claude/**', '**/.git/**', '**/.portal-local/**', '*.log']
-    }
+      deny: [
+        '.env',
+        '.env.*',
+        '*.{crt,pem}',
+        '.dev.vars',
+        '.dev.vars.*',
+        '**/.opencode/**',
+        '**/.claude/**',
+        '**/.git/**',
+        '**/.portal-local/**',
+        '*.log',
+      ],
+    },
   },
   preview: {
     host: '127.0.0.1',
@@ -51,7 +69,10 @@ export default defineConfig({
     emptyOutDir: true,
     assetsDir: 'assets',
     rollupOptions: {
-      input: { site: resolve(import.meta.dirname, 'index.html'), portal: resolve(import.meta.dirname, 'portal/index.html') }
-    }
-  }
+      input: {
+        site: resolve(import.meta.dirname, 'index.html'),
+        portal: resolve(import.meta.dirname, 'portal/index.html'),
+      },
+    },
+  },
 })

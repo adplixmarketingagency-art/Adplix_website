@@ -29,7 +29,13 @@ export function TracingBeam({ children, className = '' }: { children: ReactNode;
 
   return (
     <div ref={ref} className={`tracing-beam ${className}`}>
-      <svg className="tracing-beam-line" width="20" height={height} viewBox={`0 0 20 ${Math.max(1, height)}`} aria-hidden="true">
+      <svg
+        className="tracing-beam-line"
+        width="20"
+        height={height}
+        viewBox={`0 0 20 ${Math.max(1, height)}`}
+        aria-hidden="true"
+      >
         <path d={`M 10 0 V ${height}`} stroke="rgba(255,255,255,.2)" strokeWidth="1" fill="none" />
         {reducedMotion ? (
           <path d={`M 10 0 V ${height}`} stroke="#ba3035" strokeWidth="1.5" fill="none" />
@@ -46,7 +52,9 @@ export function TracingBeam({ children, className = '' }: { children: ReactNode;
           </>
         )}
       </svg>
-      <div ref={contentRef} className="tracing-beam-content">{children}</div>
+      <div ref={contentRef} className="tracing-beam-content">
+        {children}
+      </div>
     </div>
   )
 }

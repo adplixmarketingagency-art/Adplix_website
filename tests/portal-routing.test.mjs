@@ -9,10 +9,14 @@ const { default: worker } = await import(`data:text/javascript,${encodeURICompon
 
 test('portal clean routes avoid index redirect loops, use private headers and same-origin service worker', async () => {
   let fetched
-  const env = { ASSETS: { fetch: async request => {
-    fetched = new URL(request.url).pathname
-    return new Response('portal', { headers: { 'Content-Type': 'text/html', 'Cache-Control': 'public' } })
-  } } }
+  const env = {
+    ASSETS: {
+      fetch: async (request) => {
+        fetched = new URL(request.url).pathname
+        return new Response('portal', { headers: { 'Content-Type': 'text/html', 'Cache-Control': 'public' } })
+      },
+    },
+  }
   const portal = await worker.fetch(new Request('https://example.test/portal/'), env, {})
   assert.equal(fetched, '/portal/')
   assert.equal(portal.status, 200)
@@ -29,7 +33,18 @@ test('portal clean routes avoid index redirect loops, use private headers and sa
 
 test('API without a configured database fails closed, never falls back to public assets', async () => {
   let assetsCalled = false
-  const response = await worker.fetch(new Request('https://example.test/api/portal/session'), { ASSETS: { fetch: async () => { assetsCalled = true; return new Response('public HTML') } } }, {})
+  const response = await worker.fetch(
+    new Request('https://example.test/api/portal/session'),
+    {
+      ASSETS: {
+        fetch: async () => {
+          assetsCalled = true
+          return new Response('public HTML')
+        },
+      },
+    },
+    {},
+  )
   assert.equal(response.status, 503)
   assert.equal(assetsCalled, false)
   assert.equal(response.headers.get('Cache-Control'), 'private, no-store')
