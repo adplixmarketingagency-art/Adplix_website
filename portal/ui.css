@@ -1,21 +1,161 @@
-.side-close svg,.menu svg,.dialog-close svg{display:block;width:22px;height:22px;flex:none}
-.sidebar nav{min-height:0;overscroll-behavior:contain}
-.task-card.task-state--assigned{border-color:#b8cde6;background:#f7faff;box-shadow:inset 3px 0 #427cb8}
-.task-card.task-state--in-progress{border-color:#ebcf91;background:#fffaf0;box-shadow:inset 3px 0 #c88d25}
-.task-card.task-state--completed{border-color:#a8cfb8;background:#f4fbf6;box-shadow:inset 3px 0 #3e9863}
-.task-card.task-state--approved{border-color:#d4c9e2;background:#f8f6fa;box-shadow:inset 3px 0 #8b76a5}
-.task-card.task-state--overdue{border-color:#b63e34;background:#fff1ee;box-shadow:inset 3px 0 #b53329}
-.task-card .tag.task-state--assigned{background:#dceafb;color:#245780}
-.task-card .tag.task-state--in-progress{background:#fff0cc;color:#78530d}
-.task-card .tag.task-state--completed{background:#dff2e5;color:#20643a}
-.task-card .tag.task-state--approved{background:#ece5f3;color:#634d7d}
-.task-card .tag.task-state--overdue{background:#ffe0dc;color:#90271e}
-.profile-photo{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-.profile-photo-preview{width:88px;height:88px;flex:none;border-radius:50%;object-fit:cover;background:#ead0ca;color:var(--red-dark);display:grid;place-items:center;font-weight:750;font-size:1.2rem}
-.identity-avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover}
-.photo-controls{min-width:min(100%,230px);flex:1}
-.photo-controls label{display:block;font-weight:650;font-size:.88rem;margin-bottom:8px}
-.photo-controls input{width:100%;max-width:100%;font-size:.84rem}
-.photo-controls .actions{margin-top:10px}
-.photo-controls .fine{margin:8px 0 0}
-@media(max-width:540px){.profile-photo{align-items:flex-start}.photo-controls{min-width:0;width:100%}}
+.side-close svg,
+.menu svg,
+.dialog-close svg {
+  display: block;
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+.sidebar nav {
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+.task-card.task-state--assigned {
+  border-color: #b8cde6;
+  background: #f7faff;
+  box-shadow: inset 3px 0 #427cb8;
+}
+.task-card.task-state--in-progress {
+  border-color: #ebcf91;
+  background: #fffaf0;
+  box-shadow: inset 3px 0 #c88d25;
+}
+.task-card.task-state--completed {
+  border-color: #a8cfb8;
+  background: #f4fbf6;
+  box-shadow: inset 3px 0 #3e9863;
+}
+.task-card.task-state--approved {
+  border-color: #d4c9e2;
+  background: #f8f6fa;
+  box-shadow: inset 3px 0 #8b76a5;
+}
+.task-card.task-state--overdue {
+  border-color: #b63e34;
+  background: #fff1ee;
+  box-shadow: inset 3px 0 #b53329;
+}
+.task-card .tag.task-state--assigned {
+  background: #dceafb;
+  color: #245780;
+}
+.task-card .tag.task-state--in-progress {
+  background: #fff0cc;
+  color: #78530d;
+}
+.task-card .tag.task-state--completed {
+  background: #dff2e5;
+  color: #20643a;
+}
+.task-card .tag.task-state--approved {
+  background: #ece5f3;
+  color: #634d7d;
+}
+.task-card .tag.task-state--overdue {
+  background: #ffe0dc;
+  color: #90271e;
+}
+.profile-photo {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.profile-photo-preview {
+  width: 88px;
+  height: 88px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #ead0ca;
+  color: var(--red-dark);
+  display: grid;
+  place-items: center;
+  font-weight: 750;
+  font-size: 1.2rem;
+}
+.profile-photo-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.identity-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.photo-controls {
+  min-width: min(100%, 230px);
+  flex: 1 1 230px;
+  overflow-wrap: anywhere;
+}
+.photo-controls label {
+  display: block;
+  font-weight: 650;
+  font-size: 0.88rem;
+  margin-bottom: 8px;
+}
+.photo-controls input,
+.photo-controls select {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  font-size: 0.84rem;
+}
+.photo-controls input[type='file'] {
+  overflow: hidden;
+}
+.photo-controls input[type='file']::file-selector-button {
+  min-height: 44px;
+  margin-right: 8px;
+  padding: 8px 12px;
+  border: 1px solid #d5cec5;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+.photo-resize-field {
+  min-width: 0;
+  margin-top: 12px;
+}
+.photo-controls select {
+  padding: 10px 12px;
+  border: 1px solid #d5cec5;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+}
+.photo-controls .actions {
+  margin-top: 10px;
+}
+.photo-controls .actions button {
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+}
+.photo-controls .fine,
+.photo-controls #profile-photo-status {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+.photo-controls :is(input, select, button):focus-visible {
+  outline: 3px solid #cf6c5d;
+  outline-offset: 3px;
+}
+@media (max-width: 540px) {
+  .profile-photo {
+    align-items: flex-start;
+  }
+  .photo-controls {
+    min-width: 0;
+    flex-basis: 100%;
+    width: 100%;
+  }
+}

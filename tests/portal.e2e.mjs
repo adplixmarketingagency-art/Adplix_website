@@ -11,6 +11,7 @@ import { unzipSync } from 'fflate'
 import { hashPassword } from '../src/portal/auth.mjs'
 import { businessDate } from '../src/portal/domain.mjs'
 import { analyticsPresetFilters } from '../portal/analytics-filters.mjs'
+import { verifyProfilePhoto } from './portal-photo-browser.mjs'
 
 // Isolated synthetic accounts and a private local D1 instance. Never use production credentials here.
 if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('Run browser verification with Node 22+')
@@ -21,37 +22,71 @@ const base = 'http://127.0.0.1:' + (process.env.PORTAL_E2E_PORT || '8790')
 const syntheticPassword = 'Synthetic-browser-temporary-123!'
 const changedPassword = 'Synthetic-browser-replacement-456!'
 const run = promisify(execFile)
-const command = (...args) => run(process.execPath, [cli, ...args], { env: { ...process.env, CI: '1', WRANGLER_SEND_METRICS: 'false' }, timeout: 120000 })
-let worker, browser, output = ''
+const command = (...args) =>
+  run(process.execPath, [cli, ...args], {
+    env: { ...process.env, CI: '1', WRANGLER_SEND_METRICS: 'false' },
+    timeout: 120000,
+  })
+let worker,
+  browser,
+  output = ''
 const errors = []
-const screenshots = resolve('projects/employee-portal/previews')
-async function navigate(page, name) { await page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', { name, exact: true }).click() }
-async function submit(form, name) { await form.getByRole('button', { name, exact: true }).click() }
-async function saved(page) { await expect(page.locator('#feedback')).toContainText('Saved successfully.') }
-async function noOverflow(page) { assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), 'Document must not overflow horizontally') }
+const screenshots = resolve('.portal-local/previews')
+async function navigate(page, name) {
+  await page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', { name, exact: true }).click()
+}
+async function submit(form, name) {
+  await form.getByRole('button', { name, exact: true }).click()
+}
+async function saved(page) {
+  await expect(page.locator('#feedback')).toContainText('Saved successfully.')
+}
+async function noOverflow(page) {
+  assert.ok(
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+    'Document must not overflow horizontally',
+  )
+}
 async function branding(page, variant) {
   const brand = page.locator(`.portal-brand--${variant}`)
   await expect(brand).toBeVisible()
   await expect(brand.locator('.portal-brand-name')).toHaveText('Adplix Media')
-  assert.ok(await brand.locator('img').evaluate(image => image.complete && image.naturalWidth > 0), 'Genuine logo asset must load')
-  assert.equal(await brand.locator('img').evaluate(image => getComputedStyle(image).borderRadius), '50%')
+  assert.ok(
+    await brand.locator('img').evaluate((image) => image.complete && image.naturalWidth > 0),
+    'Genuine logo asset must load',
+  )
+  assert.equal(await brand.locator('img').evaluate((image) => getComputedStyle(image).borderRadius), '50%')
 }
-const taskCard = (page, title) => page.locator('.task-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) })
-const editorProgress = page => page.locator('.employee-row').filter({ has: page.locator('.employee-label > span').filter({ hasText: /^Test Editor$/ }) })
+const taskCard = (page, title) =>
+  page.locator('.task-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) })
+const editorProgress = (page) =>
+  page
+    .locator('.employee-row')
+    .filter({ has: page.locator('.employee-label > span').filter({ hasText: /^Test Editor$/ }) })
 async function checkProgress(page, done) {
   await page.getByRole('button', { name: 'Refresh', exact: true }).click()
   const row = editorProgress(page)
-  await expect(row.locator('.employee-label strong')).toHaveText(`${done} of 3 completed (${Math.round(done / 3 * 100)}%)`)
+  await expect(row.locator('.employee-label strong')).toHaveText(
+    `${done} of 3 completed (${Math.round((done / 3) * 100)}%)`,
+  )
   await expect(row.locator('.assignment-slot.filled')).toHaveCount(done)
   await expect(row.locator('.assignment-slot.pending')).toHaveCount(3 - done)
 }
 async function accessibility(page, name) {
-  const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()
-  assert.deepEqual(violations.map(v => ({ id: v.id, impact: v.impact, targets: v.nodes.map(n => n.target) })), [], `${name}: accessibility violations`)
+  const { violations } = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+    .analyze()
+  assert.deepEqual(
+    violations.map((v) => ({ id: v.id, impact: v.impact, targets: v.nodes.map((n) => n.target) })),
+    [],
+    `${name}: accessibility violations`,
+  )
 }
 function track(page) {
-  page.on('pageerror', error => errors.push(error.message))
-  page.on('console', message => { if (/Content Security Policy|violates.*directive|Refused to/.test(message.text())) errors.push(message.text()) })
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => {
+    if (/Content Security Policy|violates.*directive|Refused to/.test(message.text())) errors.push(message.text())
+  })
 }
 async function login(page, email, change = false) {
   await page.goto(base + '/portal/')
@@ -76,17 +111,91 @@ try {
   await readFile('.portal-dist/portal/index.html')
   await mkdir(folder, { recursive: true, mode: 0o700 })
   await mkdir(screenshots, { recursive: true })
-  await command('d1', 'migrations', 'apply', 'adplix-portal-local', '--local', '--config', 'wrangler.portal.toml', '--persist-to', statePath)
-  const account = { id: 'browser-admin', name: 'Test Admin', employeeId: 'TEST-ADMIN', email: 'admin@example.test', role: 'Admin', jobFunctions: [], profile: {}, active: true, mustChangePassword: true, credentialVersion: 0, passwordHash: await hashPassword(syntheticPassword), createdAt: new Date().toISOString() }
-  const state = JSON.stringify({ schema: 1, users: [account], clients: [], tasks: [], updates: [], absences: [], notes: [], notifications: [], subscriptions: [], audit: [] })
+  await command(
+    'd1',
+    'migrations',
+    'apply',
+    'adplix-portal-local',
+    '--local',
+    '--config',
+    'wrangler.portal.toml',
+    '--persist-to',
+    statePath,
+  )
+  const account = {
+    id: 'browser-admin',
+    name: 'Test Admin',
+    employeeId: 'TEST-ADMIN',
+    email: 'admin@example.test',
+    role: 'Admin',
+    jobFunctions: [],
+    profile: {},
+    active: true,
+    mustChangePassword: true,
+    credentialVersion: 0,
+    passwordHash: await hashPassword(syntheticPassword),
+    createdAt: new Date().toISOString(),
+  }
+  const state = JSON.stringify({
+    schema: 1,
+    users: [account],
+    clients: [],
+    tasks: [],
+    updates: [],
+    absences: [],
+    notes: [],
+    notifications: [],
+    subscriptions: [],
+    audit: [],
+  })
   const seed = resolve(folder, 'seed.sql')
-  await writeFile(seed, `UPDATE portal_state SET document='${state.replaceAll("'", "''")}',revision=1 WHERE id=1 AND revision=0;`, { mode: 0o600 })
-  await command('d1', 'execute', 'adplix-portal-local', '--local', '--config', 'wrangler.portal.toml', '--persist-to', statePath, '--file', seed)
-  worker = spawn(process.execPath, [cli, 'dev', '--config', 'wrangler.portal.toml', '--local', '--port', new URL(base).port, '--persist-to', statePath], { env: { ...process.env, CI: '1', WRANGLER_SEND_METRICS: 'false' }, stdio: ['ignore', 'pipe', 'pipe'] })
-  worker.stdout.on('data', data => output += data)
-  worker.stderr.on('data', data => output += data)
+  await writeFile(
+    seed,
+    `UPDATE portal_state SET document='${state.replaceAll("'", "''")}',revision=1 WHERE id=1 AND revision=0;`,
+    { mode: 0o600 },
+  )
+  await command(
+    'd1',
+    'execute',
+    'adplix-portal-local',
+    '--local',
+    '--config',
+    'wrangler.portal.toml',
+    '--persist-to',
+    statePath,
+    '--file',
+    seed,
+  )
+  worker = spawn(
+    process.execPath,
+    [
+      cli,
+      'dev',
+      '--config',
+      'wrangler.portal.toml',
+      '--local',
+      '--port',
+      new URL(base).port,
+      '--persist-to',
+      statePath,
+    ],
+    { env: { ...process.env, CI: '1', WRANGLER_SEND_METRICS: 'false' }, stdio: ['ignore', 'pipe', 'pipe'] },
+  )
+  worker.stdout.on('data', (data) => (output += data))
+  worker.stderr.on('data', (data) => (output += data))
   let ready = false
-  for (let i = 0; i < 60; i++) { try { const r = await fetch(base + '/portal/'); if (r.status === 200) { ready = true; break } } catch {} await delay(500) }
+  for (let i = 0; i < 60; i++) {
+    try {
+      const r = await fetch(base + '/portal/')
+      if (r.status === 200) {
+        ready = true
+        break
+      }
+    } catch {
+      /* Wait for the local Worker within the bounded startup window. */
+    }
+    await delay(500)
+  }
   assert.ok(ready, 'Local Cloudflare runtime failed to start: ' + output)
   browser = await chromium.launch({ headless: true })
   const adminContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' })
@@ -102,10 +211,14 @@ try {
   await adminPage.screenshot({ path: resolve(screenshots, 'portal-login-mobile.png'), fullPage: true })
   await adminPage.setViewportSize({ width: 1440, height: 1000 })
   await login(adminPage, 'admin@example.test', true)
+  await verifyProfilePhoto(adminPage, screenshots, 'admin')
   const applicantContext = await browser.newContext({ viewport: { width: 375, height: 812 }, reducedMotion: 'reduce' })
   const applicant = await applicantContext.newPage()
   track(applicant)
-  for (const [name, email] of [['New Applicant', 'applicant@example.test'], ['Rejected Applicant', 'rejected@example.test']]) {
+  for (const [name, email] of [
+    ['New Applicant', 'applicant@example.test'],
+    ['Rejected Applicant', 'rejected@example.test'],
+  ]) {
     await applicant.goto(base + '/portal/')
     await applicant.getByRole('button', { name: 'Register / request access' }).click()
     await branding(applicant, 'auth')
@@ -126,12 +239,20 @@ try {
     await signIn.getByLabel('Portal password').fill(syntheticPassword)
     await submit(signIn, 'Sign in')
     await expect(applicant.locator('#feedback')).toContainText('approval required')
-    assert.equal((await applicantContext.cookies()).some(cookie => cookie.name === 'portal_session'), false)
+    assert.equal(
+      (await applicantContext.cookies()).some((cookie) => cookie.name === 'portal_session'),
+      false,
+    )
   }
   await navigate(adminPage, 'Team')
   await adminPage.getByRole('button', { name: 'Refresh', exact: true }).click()
-  const pendingSection = adminPage.locator('section').filter({ has: adminPage.getByRole('heading', { name: 'Registration requests', exact: true }) })
-  const acceptedRow = pendingSection.locator('.list-item').filter({ hasText: 'applicant@example.test' }).filter({ hasNotText: 'rejected@example.test' })
+  const pendingSection = adminPage
+    .locator('section')
+    .filter({ has: adminPage.getByRole('heading', { name: 'Registration requests', exact: true }) })
+  const acceptedRow = pendingSection
+    .locator('.list-item')
+    .filter({ hasText: 'applicant@example.test' })
+    .filter({ hasNotText: 'rejected@example.test' })
   await acceptedRow.getByRole('button', { name: 'Approve', exact: true }).click()
   const approval = adminPage.locator('[data-form="registration-approve"]')
   await approval.getByLabel('Employee ID', { exact: true }).fill('TEST-REG-001')
@@ -148,7 +269,10 @@ try {
   await applicant.setViewportSize({ width: 375, height: 812 })
   await accessibility(applicant, 'approved applicant mobile')
   await applicantContext.close()
-  for (const [name, employeeId, email, func] of [['Test Editor', 'TEST-001', 'editor@example.test', 'video editing'], ['Test Designer', 'TEST-002', 'designer@example.test', 'Canva design']]) {
+  for (const [name, employeeId, email, func] of [
+    ['Test Editor', 'TEST-001', 'editor@example.test', 'video editing'],
+    ['Test Designer', 'TEST-002', 'designer@example.test', 'Canva design'],
+  ]) {
     const form = adminPage.locator('[data-form="employee"]')
     await form.getByLabel('Name', { exact: true }).fill(name)
     await form.getByLabel('Employee ID', { exact: true }).fill(employeeId)
@@ -165,11 +289,19 @@ try {
   await submit(client, 'Add client')
   await saved(adminPage)
   await navigate(adminPage, 'Assignments')
-  for (const [title, employeeName, func] of [['Edit launch reel', 'Test Editor', 'video editing'], ['Design campaign poster', 'Test Designer', 'Canva design'], ['Edit follow-up reel', 'Test Editor', 'video editing'], ['Design launch poster', 'Test Editor', 'Canva design'], ['Admin website task', 'Test Admin', 'website maintenance']]) {
+  for (const [title, employeeName, func] of [
+    ['Edit launch reel', 'Test Editor', 'video editing'],
+    ['Design campaign poster', 'Test Designer', 'Canva design'],
+    ['Edit follow-up reel', 'Test Editor', 'video editing'],
+    ['Design launch poster', 'Test Editor', 'Canva design'],
+    ['Admin website task', 'Test Admin', 'website maintenance'],
+  ]) {
     const form = adminPage.locator('[data-form="task"]')
     await form.getByLabel('Task title').fill(title)
     await form.getByLabel('Assigned employee / admin', { exact: true }).selectOption({ label: employeeName })
-    await expect(form.getByLabel('Job function', { exact: true }).getByRole('option', { name: func, exact: true })).toHaveCount(1)
+    await expect(
+      form.getByLabel('Job function', { exact: true }).getByRole('option', { name: func, exact: true }),
+    ).toHaveCount(1)
     const clientSelection = form.getByLabel('Client', { exact: true })
     const clientOption = clientSelection.getByRole('option', { name: /^Test Client · / })
     await expect(clientOption).toHaveCount(1)
@@ -204,10 +336,11 @@ try {
   await expect(employeePage.locator('.task-card.overdue')).toHaveCount(3)
   assert.equal(await employeePage.locator('.list-item img').count(), 0, 'Untrusted note HTML must stay text')
   await accessibility(employeePage, 'employee overview')
+  await verifyProfilePhoto(employeePage, screenshots, 'employee')
   const daily = employeePage.locator('#daily-status .tag')
   const dailyStatus = await daily.textContent()
   if (dailyStatus === 'Update overdue') await expect(daily).toHaveClass(/tag--overdue/)
-  await employeePage.route('**/api/portal/snapshot', async route => {
+  await employeePage.route('**/api/portal/snapshot', async (route) => {
     const response = await route.fetch()
     const snapshot = await response.json()
     snapshot.updateStatus = { status: 'overdue', deadline: `${snapshot.today}T05:30:00.000Z` }
@@ -264,7 +397,12 @@ try {
   await saved(adminPage)
   await expect(adminPage.getByText('No completed tasks awaiting review.', { exact: true })).toBeVisible()
   await employeePage.getByRole('button', { name: 'Refresh', exact: true }).click()
-  await expect(employeePage.locator('.task-card').filter({ has: employeePage.getByRole('heading', { name: 'Edit launch reel', exact: true }) }).locator('.tag')).toHaveText('Approved')
+  await expect(
+    employeePage
+      .locator('.task-card')
+      .filter({ has: employeePage.getByRole('heading', { name: 'Edit launch reel', exact: true }) })
+      .locator('.tag'),
+  ).toHaveText('Approved')
   await expect(employeePage.locator('.task-rating')).toContainText('4/5')
   await expect(employeePage.getByRole('button', { name: 'Reopen task', exact: true })).toHaveCount(0)
   await navigate(adminPage, 'Analytics')
@@ -280,18 +418,50 @@ try {
   }
   await expect(editorProgress(adminPage).locator('.assignment-slot.task-type-video-editing.filled')).toHaveCount(2)
   await expect(editorProgress(adminPage).locator('.assignment-slot.task-type-canva-poster.filled')).toHaveCount(1)
-  await expect(editorProgress(adminPage).locator('.assignment-slot.task-type-video-editing').first()).toHaveAttribute('title', /Video Editing/)
-  await expect(editorProgress(adminPage).locator('.assignment-slot.task-type-canva-poster').first()).toHaveAttribute('title', /Canva Poster/)
-  const videoFill = await editorProgress(adminPage).locator('.task-type-video-editing.filled').first().evaluate(node => getComputedStyle(node).backgroundColor)
-  const canvaFill = await editorProgress(adminPage).locator('.task-type-canva-poster.filled').first().evaluate(node => getComputedStyle(node).backgroundColor)
+  await expect(editorProgress(adminPage).locator('.assignment-slot.task-type-video-editing').first()).toHaveAttribute(
+    'title',
+    /Video Editing/,
+  )
+  await expect(editorProgress(adminPage).locator('.assignment-slot.task-type-canva-poster').first()).toHaveAttribute(
+    'title',
+    /Canva Poster/,
+  )
+  const videoFill = await editorProgress(adminPage)
+    .locator('.task-type-video-editing.filled')
+    .first()
+    .evaluate((node) => getComputedStyle(node).backgroundColor)
+  const canvaFill = await editorProgress(adminPage)
+    .locator('.task-type-canva-poster.filled')
+    .first()
+    .evaluate((node) => getComputedStyle(node).backgroundColor)
   assert.notEqual(videoFill, canvaFill, 'Video Editing and Canva Poster must use different colours')
-  const progressTimeline = adminPage.getByRole('region', { name: 'Current assignment-date progress and historical first events by date' })
+  const progressTimeline = adminPage.getByRole('region', {
+    name: 'Current assignment-date progress and historical first events by date',
+  })
   await expect(progressTimeline.getByRole('img', { name: /Video Editing — 2 completed first event/ })).toBeVisible()
   await expect(progressTimeline.getByRole('img', { name: /Video Editing — 1 approved first event/ })).toBeVisible()
-  assert.equal(await progressTimeline.locator('.progress-segment.task-type-video-editing').first().evaluate(node => getComputedStyle(node).backgroundColor), videoFill)
-  assert.equal(await progressTimeline.locator('.progress-segment.task-type-canva-poster').first().evaluate(node => getComputedStyle(node).backgroundColor), canvaFill)
-  await expect(progressTimeline.locator('.progress-segment.task-type-video-editing').first()).toHaveAttribute('title', /Video Editing/)
-  await expect(progressTimeline.locator('.progress-segment.task-type-canva-poster').first()).toHaveAttribute('title', /Canva Poster/)
+  assert.equal(
+    await progressTimeline
+      .locator('.progress-segment.task-type-video-editing')
+      .first()
+      .evaluate((node) => getComputedStyle(node).backgroundColor),
+    videoFill,
+  )
+  assert.equal(
+    await progressTimeline
+      .locator('.progress-segment.task-type-canva-poster')
+      .first()
+      .evaluate((node) => getComputedStyle(node).backgroundColor),
+    canvaFill,
+  )
+  await expect(progressTimeline.locator('.progress-segment.task-type-video-editing').first()).toHaveAttribute(
+    'title',
+    /Video Editing/,
+  )
+  await expect(progressTimeline.locator('.progress-segment.task-type-canva-poster').first()).toHaveAttribute(
+    'title',
+    /Canva Poster/,
+  )
   await expect(adminPage.locator('.progress-segment.progress-open')).toHaveCount(2)
   await navigate(employeePage, 'Team tasks')
   await expect(employeePage.getByRole('heading', { name: 'Design campaign poster' })).toBeVisible()
@@ -330,26 +500,55 @@ try {
   await analyticsFilters.getByLabel('Month', { exact: true }).fill(reportingMonth)
   await analyticsFilters.getByLabel('Employee', { exact: true }).selectOption({ label: 'Test Editor' })
   const selectedEmployeeId = await analyticsFilters.getByLabel('Employee', { exact: true }).inputValue()
-  const monthRequest = adminPage.waitForRequest(request => request.url().includes('/api/portal/analytics?') && request.url().includes(`month=${reportingMonth}`) && request.url().includes('employeeId='))
+  const monthRequest = adminPage.waitForRequest(
+    (request) =>
+      request.url().includes('/api/portal/analytics?') &&
+      request.url().includes(`month=${reportingMonth}`) &&
+      request.url().includes('employeeId='),
+  )
   await analyticsFilters.getByRole('button', { name: 'Apply filters', exact: true }).click()
   await monthRequest
   await expect(adminPage.locator('form[data-form="filters"] .fine')).toContainText(`Month: ${reportingMonth}`)
   await expect(adminPage.locator('form[data-form="filters"] .fine')).toContainText('Employee: Test Editor')
-  await expect(adminPage.getByRole('list', { name: 'Current task status and attendance by employee' }).locator(':scope > .employee-row')).toHaveCount(1)
-  await expect(adminPage.getByRole('list', { name: 'Current task status and attendance by employee' })).toContainText('Test Editor')
+  await expect(
+    adminPage
+      .getByRole('list', { name: 'Current task status and attendance by employee' })
+      .locator(':scope > .employee-row'),
+  ).toHaveCount(1)
+  await expect(adminPage.getByRole('list', { name: 'Current task status and attendance by employee' })).toContainText(
+    'Test Editor',
+  )
   const [monthDownload, monthExport] = await Promise.all([
     adminPage.waitForEvent('download'),
-    adminPage.waitForRequest(request => request.url().includes('/api/portal/export?') && request.url().includes(`month=${reportingMonth}`) && request.url().includes('employeeId=')),
+    adminPage.waitForRequest(
+      (request) =>
+        request.url().includes('/api/portal/export?') &&
+        request.url().includes(`month=${reportingMonth}`) &&
+        request.url().includes('employeeId='),
+    ),
     adminPage.locator('[data-action="export"]').click(),
   ])
   assert.ok(monthDownload.suggestedFilename().endsWith('.xlsx'))
+  assert.equal(new URL(monthExport.url()).searchParams.get('employeeId'), selectedEmployeeId)
   const quickFilters = adminPage.getByRole('group', { name: 'Quick chart date filters' })
   await expect(quickFilters).toBeVisible()
-  for (const [preset, label] of [['24h', '24 hours'], ['3d', '3 days'], ['5d', '5 days'], ['7d', '7 days'], ['month', '1 month']]) {
+  for (const [preset, label] of [
+    ['24h', '24 hours'],
+    ['3d', '3 days'],
+    ['5d', '5 days'],
+    ['7d', '7 days'],
+    ['month', '1 month'],
+  ]) {
     const quick = analyticsPresetFilters(preset, businessDate())
-    const quickRequest = adminPage.waitForRequest(request => {
+    const quickRequest = adminPage.waitForRequest((request) => {
       const url = request.url()
-      return url.includes('/api/portal/analytics?') && (quick.period === 'month' ? url.includes(`month=${quick.month}`) : url.includes(`from=${quick.from}`) && url.includes(`to=${quick.to}`)) && url.includes('employeeId=')
+      return (
+        url.includes('/api/portal/analytics?') &&
+        (quick.period === 'month'
+          ? url.includes(`month=${quick.month}`)
+          : url.includes(`from=${quick.from}`) && url.includes(`to=${quick.to}`)) &&
+        url.includes('employeeId=')
+      )
     })
     await quickFilters.getByRole('button', { name: label, exact: true }).click()
     await quickRequest
@@ -357,29 +556,45 @@ try {
   }
   await analyticsFilters.getByLabel('Reporting period', { exact: true }).selectOption('year')
   await analyticsFilters.getByLabel('Year', { exact: true }).fill(reportingYear)
-  const yearRequest = adminPage.waitForRequest(request => request.url().includes('/api/portal/analytics?') && request.url().includes(`year=${reportingYear}`) && !request.url().includes('month='))
+  const yearRequest = adminPage.waitForRequest(
+    (request) =>
+      request.url().includes('/api/portal/analytics?') &&
+      request.url().includes(`year=${reportingYear}`) &&
+      !request.url().includes('month='),
+  )
   await analyticsFilters.getByRole('button', { name: 'Apply filters', exact: true }).click()
   await yearRequest
   await expect(adminPage.locator('form[data-form="filters"] .fine')).toContainText(`Year: ${reportingYear}`)
   await expect(adminPage.locator('form[data-form="filters"] [name="employeeId"]')).toHaveValue(selectedEmployeeId)
   await expect(adminPage.getByRole('heading', { name: 'Employees', exact: true })).toBeVisible()
-  await expect(adminPage.getByRole('list', { name: 'Current task status and attendance by employee' }).locator(':scope > .employee-row')).not.toHaveCount(0)
+  await expect(
+    adminPage
+      .getByRole('list', { name: 'Current task status and attendance by employee' })
+      .locator(':scope > .employee-row'),
+  ).not.toHaveCount(0)
   await expect(editorProgress(adminPage).locator('.employee-label strong')).toHaveText('3 of 3 completed (100%)')
   await analyticsFilters.getByLabel('Job function', { exact: true }).selectOption('video editing')
   await analyticsFilters.getByRole('button', { name: 'Apply filters', exact: true }).click()
   await expect(editorProgress(adminPage).locator('.employee-label strong')).toHaveText('2 of 2 completed (100%)')
   await expect(editorProgress(adminPage).locator('.assignment-slot.task-type-canva-poster')).toHaveCount(0)
-  await expect(adminPage.getByRole('region', { name: 'Current assignment-date progress and historical first events by date' }).getByRole('img', { name: /Video Editing — 2 completed first event/ })).toBeVisible()
+  await expect(
+    adminPage
+      .getByRole('region', { name: 'Current assignment-date progress and historical first events by date' })
+      .getByRole('img', { name: /Video Editing — 2 completed first event/ }),
+  ).toBeVisible()
   await analyticsFilters.getByLabel('Job function', { exact: true }).selectOption('')
   await analyticsFilters.getByRole('button', { name: 'Apply filters', exact: true }).click()
   await expect(editorProgress(adminPage).locator('.employee-label strong')).toHaveText('3 of 3 completed (100%)')
   await adminPage.getByText('View assignment-date counts', { exact: true }).click()
   await expect(adminPage.getByRole('cell', { name: /Video Editing: 2\/2 · Canva Poster: 1\/1/ })).toBeVisible()
   await accessibility(adminPage, 'Admin analytics')
-  const [download] = await Promise.all([adminPage.waitForEvent('download'), adminPage.getByRole('button', { name: 'Download Excel', exact: true }).click()])
+  const [download] = await Promise.all([
+    adminPage.waitForEvent('download'),
+    adminPage.getByRole('button', { name: 'Download Excel', exact: true }).click(),
+  ])
   await download.saveAs(resolve(folder, 'report.xlsx'))
   const workbook = unzipSync(new Uint8Array(await readFile(resolve(folder, 'report.xlsx'))))
-  assert.equal(Object.keys(workbook).filter(p => /worksheets\/sheet\d.xml$/.test(p)).length, 6)
+  assert.equal(Object.keys(workbook).filter((p) => /worksheets\/sheet\d.xml$/.test(p)).length, 6)
   await adminPage.screenshot({ path: resolve(screenshots, 'admin-analytics.png'), fullPage: true })
   await adminPage.setViewportSize({ width: 375, height: 812 })
   await noOverflow(adminPage)
@@ -396,7 +611,10 @@ try {
   await employeePage.getByRole('button', { name: 'Open menu', exact: true }).click()
   await expect(employeePage.getByRole('button', { name: 'Close menu' })).toBeVisible()
   await branding(employeePage, 'sidebar')
-  assert.ok(await employeePage.locator('.side-brand').evaluate(node => node.scrollWidth <= node.clientWidth), 'Sidebar branding and close button must fit together')
+  assert.ok(
+    await employeePage.locator('.side-brand').evaluate((node) => node.scrollWidth <= node.clientWidth),
+    'Sidebar branding and close button must fit together',
+  )
   await employeePage.keyboard.press('Escape')
   await expect(employeePage.getByRole('button', { name: 'Open menu', exact: true })).toBeFocused()
   await accessibility(employeePage, 'employee mobile')
@@ -409,10 +627,13 @@ try {
   const sw = await fetch(base + '/portal/sw.js')
   assert.equal(sw.status, 200)
   assert.ok(sw.headers.get('content-security-policy').includes("worker-src 'self'"))
-  console.info('Browser delivery check passed: real local D1, Admin/Employee workflows, Excel, desktop/mobile, accessibility and CSP.')
+  console.info(
+    'Browser delivery check passed: real local D1, Admin/Employee workflows, Excel, desktop/mobile, accessibility and CSP.',
+  )
 } finally {
   await browser?.close()
   worker?.kill('SIGTERM')
-  if (worker && worker.exitCode === null) await Promise.race([new Promise(resolve => worker.once('exit', resolve)), delay(5000)])
+  if (worker && worker.exitCode === null)
+    await Promise.race([new Promise((resolve) => worker.once('exit', resolve)), delay(5000)])
   await rm(folder, { recursive: true, force: true })
 }
