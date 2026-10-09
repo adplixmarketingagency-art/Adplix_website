@@ -1,0 +1,19 @@
+# Local portal verification only. Do not deploy this placeholder database ID.
+# Production D1 binding must be provisioned explicitly in wrangler.toml.
+name = "adplix-portal-local"
+main = "src/index.js"
+compatibility_date = "2026-09-12"
+
+[assets]
+directory = ".portal-dist"
+binding = "ASSETS"
+run_worker_first = ["/api/portal", "/api/portal/*", "/portal", "/portal/*"]
+
+[vars]
+PORTAL_ALLOW_HTTP_LOCAL = "true"
+
+[[d1_databases]]
+binding = "PORTAL_DB"
+database_name = "adplix-portal-local"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "migrations"

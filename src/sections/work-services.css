@@ -1,0 +1,450 @@
+.ws-section {
+  --ws-rule: #303030;
+  --ws-muted: #b3b3b3;
+  position: relative;
+  isolation: isolate;
+  padding-block: clamp(72px, 8vw, 112px);
+  color: #f3f3f3;
+  background: #080808;
+  scroll-margin-top: 96px;
+}
+
+.ws-section > .shell {
+  position: relative;
+  z-index: 1;
+}
+
+.ws-section + .ws-section {
+  border-top: 1px solid var(--ws-rule);
+}
+
+.ws-work { background: #181818; }
+
+.ws-section .shell {
+  width: min(100%, 1280px);
+  padding-inline: clamp(22px, 4.2vw, 60px);
+}
+
+.ws-section h2,
+.ws-section h3,
+.ws-section p,
+.ws-section ol {
+  margin: 0;
+}
+
+.ws-section ol {
+  padding: 0;
+  list-style: none;
+}
+
+.ws-section .eyebrow {
+  margin-bottom: 18px;
+  color: var(--ws-muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 450;
+  letter-spacing: 0;
+  line-height: 1.5;
+  text-transform: none;
+}
+
+.ws-section .display-title {
+  max-width: 900px;
+  font-size: clamp(30px, 4.2vw, 54px);
+  font-weight: 450;
+  letter-spacing: -0.035em;
+  line-height: 1.13;
+  overflow-wrap: break-word;
+}
+
+.ws-section .body-copy {
+  max-width: 65ch;
+  color: var(--ws-muted);
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.ws-red {
+  color: #f07676;
+}
+
+.ws-section a:focus-visible,
+.ws-section button:focus-visible,
+.ws-section video:focus-visible {
+  outline: 2px solid #f07676;
+  outline-offset: 4px;
+}
+
+.ws-section-header,
+.ws-process-intro {
+  margin-bottom: clamp(36px, 5vw, 56px);
+}
+
+.ws-section-header .ws-intro,
+.ws-process-intro .body-copy {
+  max-width: 680px;
+  margin-top: 20px;
+}
+
+.ws-projects {
+  display: grid;
+  gap: clamp(90px, 12vw, 168px);
+}
+
+.ws-project {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr);
+  align-items: center;
+  gap: clamp(32px, 6vw, 100px);
+  min-width: 0;
+  perspective: 1100px;
+}
+
+.ws-project:nth-child(even) {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr);
+}
+
+.ws-project:nth-child(even) .ws-film-frame {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.ws-project:nth-child(even) .ws-project-caption {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.ws-film-frame {
+  position: relative;
+  min-width: 0;
+  height: clamp(420px, 44vw, 520px);
+  background: #151515;
+  border: 1px solid #353535;
+  box-shadow: 0 35px 80px rgba(0, 0, 0, .36);
+  will-change: transform;
+}
+
+.ws-film-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ws-project-caption {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  will-change: transform;
+}
+
+.ws-project-title {
+  color: #f07676;
+  font-size: clamp(26px, 3vw, 42px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+}
+
+.ws-section .ws-project-metric {
+  margin-top: 14px;
+  color: #dedede;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.5;
+}
+
+.ws-project-caption > .body-copy {
+  margin-top: 18px;
+}
+
+.ws-project-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin-top: 24px;
+}
+
+.ws-play-control {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .48);
+  border-radius: 50%;
+  background: rgba(8, 8, 8, .78);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 250ms, border-color 250ms;
+}
+
+.ws-play-control:hover:not(:disabled) {
+  border-color: #fff;
+  background: rgba(8, 8, 8, .95);
+}
+
+.ws-play-control:disabled {
+  cursor: not-allowed;
+  opacity: .6;
+}
+
+.ws-section .ws-case-link {
+  gap: 0;
+  padding-block: 9px;
+  border-color: #777;
+  color: #e8e8e8;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.ws-section .ws-case-link:hover {
+  border-color: #f07676;
+  color: #f07676;
+}
+
+.ws-section .ws-playback-error {
+  margin-top: 12px;
+  color: #f2a0a0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ws-services {
+  background: #0d0d0d;
+}
+
+.ws-services-beams {
+  opacity: .4;
+  mask-image: linear-gradient(to bottom, transparent, black 18%, black 80%, transparent);
+}
+
+.ws-services-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px clamp(16px, 4vw, 60px);
+}
+
+.ws-service-row,
+.ws-process-step {
+  position: relative;
+  min-width: 0;
+  border-top: 1px solid var(--ws-rule);
+}
+
+.ws-service-row {
+  isolation: isolate;
+  padding: clamp(22px, 3vw, 36px);
+  outline-offset: -4px;
+}
+
+.ws-service-row h3,
+.ws-service-row p {
+  position: relative;
+  z-index: 1;
+}
+
+.ws-service-row:focus-visible {
+  outline: 2px solid #f07676;
+}
+
+.ws-service-row:focus-visible::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #261416;
+  z-index: 0;
+}
+
+.ws-service-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #261416;
+  border-top: 1px solid #9e393f;
+  pointer-events: none;
+}
+
+.ws-service-row h3,
+.ws-process-step h3 {
+  font-size: clamp(20px, 2vw, 24px);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+}
+
+.ws-service-row h3 {
+  overflow-wrap: anywhere;
+}
+
+.ws-service-row .body-copy,
+.ws-process-step .body-copy {
+  margin-top: 12px;
+}
+
+.ws-approach > .shell {
+  display: grid;
+  grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr);
+  gap: clamp(40px, 6vw, 100px);
+  align-items: start;
+}
+
+.ws-process-intro {
+  position: sticky;
+  top: 126px;
+}
+
+.tracing-beam {
+  position: relative;
+  min-width: 0;
+  padding-left: 42px;
+}
+
+.tracing-beam-line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.ws-process-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ws-process-step {
+  padding: 24px 0 clamp(50px, 6vw, 80px);
+}
+
+.ws-process-step::before {
+  content: '';
+  position: absolute;
+  top: 28px;
+  left: -37px;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #f07676;
+  border-radius: 50%;
+  background: #080808;
+  box-shadow: 0 0 0 4px #080808;
+}
+
+.ws-process-number {
+  display: block;
+  margin-bottom: 14px;
+  color: var(--ws-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+@media (max-width: 959px) {
+  .ws-project {
+    gap: 36px;
+  }
+
+  .ws-approach > .shell {
+    display: block;
+  }
+
+  .ws-process-intro {
+    position: static;
+  }
+
+  .ws-process-trace {
+    max-width: 730px;
+  }
+}
+
+@media (max-width: 600px) {
+  .ws-section {
+    padding-block: 68px;
+    scroll-margin-top: 80px;
+  }
+
+  .ws-section-header,
+  .ws-process-intro {
+    margin-bottom: 34px;
+  }
+
+  .ws-section .display-title {
+    font-size: clamp(30px, 8vw, 40px);
+  }
+
+  .ws-projects {
+    gap: 80px;
+  }
+
+  .ws-project,
+  .ws-project:nth-child(even) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 26px;
+  }
+
+  .ws-film-frame {
+    width: 100%;
+    height: clamp(390px, 115vw, 480px);
+  }
+
+  .ws-project:nth-child(even) .ws-film-frame,
+  .ws-project:nth-child(even) .ws-project-caption {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .ws-project-caption {
+    margin-top: 0;
+  }
+
+  .ws-project-title {
+    font-size: 24px;
+  }
+
+  .ws-project-caption > .body-copy {
+    margin-top: 14px;
+  }
+
+  .ws-project-actions {
+    margin-top: 20px;
+  }
+
+  .ws-services-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ws-service-row {
+    padding: 24px 16px;
+  }
+
+  .tracing-beam {
+    padding-left: 30px;
+  }
+
+  .ws-process-step::before {
+    left: -25px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-section *,
+  .ws-section *::before,
+  .ws-section *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .ws-film-frame,
+  .ws-project-caption {
+    will-change: auto;
+  }
+}

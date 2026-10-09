@@ -1,0 +1,75 @@
+# Portal integration contract
+
+Implementation contract, not a claim of production deployment. JSON fields are camelCase; timestamps ISO UTC. Business timezone Asia/Kolkata.
+
+## HTTP
+
+- `POST /api/portal/login` `{email,password}` → `{user,csrfToken}` plus HttpOnly cookie.
+- `POST /api/portal/register` `{name,email,password}` → generic 202 `{ok:true,message}` without a session. Request is Pending until Admin approval; duplicate submissions do not replace stored credentials. Correct pending credentials at login return approval-required 403; rejected/wrong credentials return generic 401.
+- `GET /api/portal/session` → `{user,csrfToken}` or 401. User: `{id,name,employeeId,email,role,jobFunctions,profile,mustChangePassword,active}`.
+- `POST /api/portal/logout` → `{ok:true}`.
+- `POST /api/portal/password` `{currentPassword,newPassword}` → fresh `{user,csrfToken}` after revocation.
+- `GET /api/portal/snapshot` → snapshot below.
+- `POST /api/portal/actions` → `{ok:true}`. Header `X-CSRF-Token` mandatory, matching Origin on state changes.
+- `GET /api/portal/analytics?from=YYYY-MM-DD&to=YYYY-MM-DD&employeeId=&clientId=&jobFunction=` → analytics (Admin only).
+- `GET /api/portal/export` with same filters → `.xlsx` (Admin only).
+- `GET /api/portal/push-key` → `{publicKey:null|string}`; absent configuration disables push honestly.
+- `POST /api/portal/push-subscription` `{subscription:{endpoint,keys:{p256dh,auth}}}` → `{ok:true}`; revoke with `{subscription:null}`.
+
+All errors `{error:humanReadableMessage,code?:string}` with appropriate 400/401/403/409/429/503. Never return passwords, hashes, session tokens or SQL errors. API is private/no-store. Login and password support password managers/paste. `/register` is a moderated request, never automatic login or an Admin bootstrap.
+
+Bootstrap is a local/explicit operator script producing a D1 insert with a password hash, never a public bootstrap endpoint or built-in default account. No actual account credentials go into repo docs.
+
+## Snapshot
+
+`{user,employees,clients,tasks,updates,absences,notes,notifications,serverNow,today,updateStatus}`
+
+Admin snapshots additionally contain `registrations:[{id,name,email,status,createdAt,decidedAt,employeeId}]`. No password hashes; Employee snapshots omit this field entirely. Legacy states without registrations remain compatible.
+
+- employee `{id,name,employeeId,email?,role,jobFunctions:[],active,profile?}`; employee-visible list excludes private fields.
+- client `{id,name,service,active}`.
+- task `{id,title,description,assigneeId,clientId,jobFunction,deadline,priority,state,createdAt,updatedAt,completedAt,approvedAt,version,intervals:[{start,end:null|string}],events:[{actorId,from,to,at,reason?,kind}],workSeconds,overdue}`. State labels exactly `Assigned`, `In-progress`, `Completed`, `Approved`.
+- update `{id,employeeId,date,text,submittedAt,editedAt}`; Admin sees team updates; Employee sees own.
+- absence `{id,employeeId,kind:'leave'|'permission',start,end,reason,status:'Pending'|'Approved'|'Rejected',createdAt,decidedAt,decisionNote}`. Leave start/end date strings inclusive; permission ISO instants. Employee sees own requests.
+- note `{id,text,recipientIds:[] (empty = all),authorId,createdAt}`. Visible only to intended recipients and Admin.
+- notification `{id,employeeId,title,text,createdAt,readAt}`; own inbox only.
+- today business date; updateStatus `{status:'pending'|'overdue'|'on-time'|'late'|'exempt',deadline,submittedAt?}` for logged-in user.
+
+## Action payloads (flat object including type)
+
+- `registration.approve` `{id,employeeId,jobFunctions:[]}`; Admin only, Pending only, unique employee ID/email, creates Employee from the stored name and password hash. No applicant role override.
+- `registration.reject` `{id}`; Admin only, Pending only; purges pending password hash and does not create an account. Both decisions are audited and conflict-safe.
+- `employee.create` `{name,employeeId,email,password,jobFunctions:[]}`; creates Employee only.
+- `employee.update` `{id,name,employeeId,email,jobFunctions:[]}`; Admin cannot change role.
+- `employee.deactivate` `{id}`; historical records retained, sessions revoked.
+- `employee.resetPassword` `{id,password}`; replacement hash, force change, revoke sessions.
+- `profile.update` `{profile:{phone?,bio?}}`; own optional fields only.
+- `client.create` `{name,service}` / `client.update` `{id,name,service}` / `client.archive` `{id}`.
+- `task.create` `{title,description,assigneeId,clientId,jobFunction,deadline,priority}`; initial Assigned.
+- `task.transition` `{id,state,version,reason?}`. Employee own permitted transitions; Admin approval/rejection; rejection Completed→In-progress requires reason. Optimistic version conflict =409.
+- `task.deadline` `{id,deadline,version}`; Admin, audited explicit adjustment.
+- `update.submit` `{text}`; today's record, original submission preserved.
+- `absence.request` `{kind,start,end,reason}`; Employee own request, Pending.
+- `absence.decide` `{id,status:'Approved'|'Rejected',decisionNote}`; Admin only, Pending only.
+- `note.create` `{text,recipientIds:[]}`; Admin, empty broadcast.
+- `broadcast.create` `{title,text,recipientIds:[]}`; Admin, own inbox records for active employees, optional configured Web Push.
+- `notification.read` `{id}`; own only.
+
+## Shared modules (owned by domain agent)
+
+`src/portal/domain.mjs` exports:
+- `businessDate(now)` → YYYY-MM-DD.
+- `workingSeconds(intervals, absences, now)` → seconds, approved absences only, half-open unions, lunch/Sunday excluded.
+- `dailyUpdateStatus(employeeId, updates, absences, now, employee?)` → updateStatus; optional employee lifecycle exempts non-employment dates.
+- `transitionTask(task, actor, nextState, now, reason='')` → new task with intervals/events/version; throws Error with status on invalid actor/state.
+- `decorateTask(task, absences, now)` → task with workSeconds/overdue, selecting assignee absences.
+
+`src/portal/analytics.mjs`: `buildAnalytics(snapshot, filters={}, now)` returns `{summary:{total,assigned,inProgress,completed,approved,overdue,onTimeRate,workSeconds},employees:[{id,name,assigned,inProgress,completed,approved,overdue,onTimeRate,workSeconds,rejections,updateOnTime,updateLate,updateMissing,updateExempt}],trend:[{date,completed,approved}],tasks,filters}`. Completed summary means state Completed; trend uses completion event dates. Explain filter date meanings and duration overlap.
+
+`src/portal/excel.mjs`: `analyticsWorkbook(analytics,snapshot)` → Uint8Array of valid XLSX, untrusted text always inline strings (no formulas); sheets Summary, Employees, Tasks, Daily Updates, Absences, Definitions.
+
+`src/portal/notifications.mjs`: `sendBroadcastPush(env,subscriptions)` → delivery counts and expiredEndpoints without secret logs; `env.VAPID_PUBLIC_KEY`, `env.VAPID_PRIVATE_KEY`, `env.VAPID_SUBJECT` optional, generic notification payload. Store inbox even when push not configured. Backend removes expired endpoints after delivery.
+
+## Defaults for this first implementation
+
+Rejection resumes eligible time immediately with required feedback. Approved absence does not move deadlines. Full-day leave exempts updates; permission covering 11:00 moves deadline to next available working instant. No holiday calendar, payroll or uploads. Employees can see task summaries, but not colleagues' private notes, reasons or profiles. Bulk state changes use D1 revision CAS/transactions; no last-writer-wins data loss.

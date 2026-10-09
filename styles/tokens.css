@@ -52,7 +52,7 @@
   /* -----------------------------------------------------------------------
      Typography Scale — Fluid with clamp()
      ----------------------------------------------------------------------- */
-  --font-display: 'Instrument Serif', 'Space Grotesk', system-ui, serif;
+  --font-display: 'Instrument Serif', 'Space Grotesk Bold', system-ui, serif;
   --font-body: 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
 

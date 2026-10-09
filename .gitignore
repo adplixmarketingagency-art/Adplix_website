@@ -8,6 +8,16 @@ node_modules/
 /dist/
 /.vite/
 /.wrangler/
+/.worker-dist/
+/.portal-dist/
+/.portal-local/
+/.omnirush/
+/.dev.vars
+/.dev.vars.*
+/.cloudflare/
+/.opencode/
+/.claude/logs/
+/.claude/runtime/
 
 # Environment files
 .env
@@ -30,4 +40,3 @@ Thumbs.db
 # IDE settings
 .vscode/
 .idea/
-
