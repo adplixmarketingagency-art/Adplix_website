@@ -246,7 +246,7 @@ function registrationConfirmation(message) {
   root.querySelector('h1')?.focus()
 }
 function changePassword() {
-  root.innerHTML = `<main class="auth"><div class="auth-card">${portalBrand()}<p class="eyebrow">Account security</p><h1>Set a new password</h1><p class="muted">Your temporary password must be changed before opening the workspace.</p><div id="feedback" class="feedback" role="alert" tabindex="-1"></div><form data-form="password">${input('currentPassword', 'Current password', 'password', '', 'required autocomplete="current-password"')}${input('newPassword', 'New password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button class="primary full" type="submit">Update password</button></form><button class="text-button" type="button" data-action="logout">Sign out</button></div></main>`
+  root.innerHTML = `<main class="auth"><div class="auth-card">${portalBrand()}<p class="eyebrow">Account security</p><h1>Set a new password</h1><p class="muted">Your temporary password must be changed before opening the workspace. Current password means the temporary password you used to sign in.</p><div id="feedback" class="feedback" role="alert" tabindex="-1"></div><form data-form="password">${input('currentPassword', 'Current password', 'password', '', 'required autocomplete="current-password"')}${input('newPassword', 'New password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button class="primary full" type="submit">Update password</button></form><button class="text-button" type="button" data-action="logout">Sign out</button></div></main>`
 }
 function navigation() {
   const nav = [
@@ -1416,20 +1416,23 @@ async function handleForm(form, button) {
     button.disabled = true
     try {
       const result = await post('/login', { email: v.email, password: v.password })
+      if (!form.isConnected) return
       state.user = result.user
       state.csrf = result.csrfToken
       state.error = ''
       if (state.user.mustChangePassword) changePassword()
       else {
-        await load()
+        if (!(await load())) return
         state.view = permittedView(location.hash.slice(1) || 'dashboard')
         shell()
         checkPush()
         if (state.view === 'analytics') loadAnalytics()
       }
     } catch (err) {
-      flash(err.message, true)
-      button.disabled = false
+      if (!err.sessionExpired && form.isConnected) {
+        flash(err.message, true)
+        button.disabled = false
+      }
     } finally {
       state.busy = false
     }
@@ -1487,16 +1490,39 @@ async function handleForm(form, button) {
     return
   }
   if (kind === 'password') {
+    const user = state.user?.id,
+      csrf = state.csrf
+    let changed = false
     state.busy = true
     button.disabled = true
     try {
       const result = await post('/password', v)
+      if (state.user?.id !== user || state.csrf !== csrf) return
       state.user = result.user
       state.csrf = result.csrfToken
+      changed = true
+      state.error = ''
+      state.message = ''
+      state.view = permittedView(location.hash.slice(1) || 'dashboard')
       await refresh('Password changed.')
     } catch (err) {
-      flash(err.message, true)
-      button.disabled = false
+      if (!err.sessionExpired && changed && state.user?.id === user && form.isConnected) {
+        flash('Password changed, but the workspace could not load. Reload this page to try again.', true)
+      } else if (!err.sessionExpired && state.user?.id === user && state.csrf === csrf && form.isConnected) {
+        const incorrectCurrent = err.status === 400 && err.code === 'CURRENT_PASSWORD_INCORRECT'
+        flash(
+          incorrectCurrent ? 'Current password is incorrect. Enter the password you used to sign in.' : err.message,
+          true,
+        )
+        if (incorrectCurrent) {
+          const current = form.elements.currentPassword
+          current.setAttribute('aria-invalid', 'true')
+          current.setAttribute('aria-describedby', 'feedback')
+          current.focus()
+          current.select()
+        }
+        button.disabled = false
+      }
     } finally {
       state.busy = false
     }
@@ -1629,6 +1655,12 @@ root.addEventListener('submit', (e) => {
     flash(error.message, true),
   )
 })
+root.addEventListener('input', (e) => {
+  if (e.target.matches('form[data-form="password"] [name="currentPassword"]')) {
+    e.target.removeAttribute('aria-invalid')
+    e.target.removeAttribute('aria-describedby')
+  }
+})
 root.addEventListener('click', (e) => {
   if (e.target.closest('.skip-link')) {
     e.preventDefault()
@@ -1713,7 +1745,7 @@ root.addEventListener(
   true,
 )
 window.addEventListener('hashchange', () => {
-  if (!state.user || state.user.mustChangePassword) return
+  if (!state.user || state.user.mustChangePassword || !state.snapshot) return
   const view = permittedView(location.hash.slice(1) || 'dashboard')
   if (state.drawer) setDrawer(false, false)
   clearPendingPhoto()
@@ -1727,21 +1759,29 @@ window.addEventListener('hashchange', () => {
   if (view === 'notifications' && !state.push) checkPush()
 })
 async function start() {
+  let sessionUser, sessionCsrf
   try {
     const session = await json('/session')
+    if (state.user || state.csrf) return
     state.user = session.user
     state.csrf = session.csrfToken
+    sessionUser = state.user?.id
+    sessionCsrf = state.csrf
     if (state.user.mustChangePassword) {
       changePassword()
       return
     }
-    await load()
+    if (!(await load())) return
     state.view = permittedView(location.hash.slice(1) || 'dashboard')
     shell()
     checkPush()
     if (state.view === 'analytics') loadAnalytics()
   } catch (err) {
-    if (err.sessionExpired) return
+    if (
+      err.sessionExpired ||
+      (sessionCsrf ? state.user?.id !== sessionUser || state.csrf !== sessionCsrf : state.user || state.csrf)
+    )
+      return
     state.error = err.status === 401 ? '' : err.message
     login()
   }

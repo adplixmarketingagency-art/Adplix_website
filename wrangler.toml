@@ -11,3 +11,11 @@ binding = "PORTAL_DB"
 database_name = "adplix-portal"
 database_id = "8c440209-ebd1-4a1f-a761-93a749952104"
 migrations_dir = "migrations"
+
+[[durable_objects.bindings]]
+name = "PORTAL_PASSWORDS"
+class_name = "PortalPasswordHasher"
+
+[[migrations]]
+tag = "v1-password-hasher"
+new_sqlite_classes = ["PortalPasswordHasher"]

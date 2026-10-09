@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 const source = (await readFile(new URL('../src/index.js', import.meta.url), 'utf8'))
   .replace('./security-headers.mjs', new URL('../src/security-headers.mjs', import.meta.url).href)
   .replace('./portal/api.mjs', new URL('../src/portal/api.mjs', import.meta.url).href)
+  .replace('./portal/password-object.mjs', new URL('../src/portal/password-object.mjs', import.meta.url).href)
 const { default: worker } = await import(`data:text/javascript,${encodeURIComponent(source)}`)
 
 test('portal clean routes avoid index redirect loops, use private headers and same-origin service worker', async () => {

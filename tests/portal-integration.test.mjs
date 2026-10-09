@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { unzipSync, strFromU8 } from 'fflate'
 import { handlePortalApi } from '../src/portal/api.mjs'
 import { hashPassword } from '../src/portal/auth.mjs'
+import { fakePortalPasswords } from './support/portal-passwords.mjs'
 
 // Synthetic test accounts only; no production bootstrap or external service call.
 const sqlite = await import('node:sqlite').catch(() => null)
@@ -53,7 +54,8 @@ test(
       createdAt: new Date().toISOString(),
     })
     sql.prepare('UPDATE portal_state SET document=? WHERE id=1').run(JSON.stringify(state))
-    const env = { PORTAL_DB: d1Adapter(sql) }
+    const passwords = fakePortalPasswords()
+    const env = { PORTAL_DB: d1Adapter(sql), PORTAL_PASSWORDS: passwords }
     const account = { cookie: '', csrf: '' }
     const employee = { cookie: '', csrf: '' }
     const other = { cookie: '', csrf: '' }
@@ -95,11 +97,55 @@ test(
           const old = { ...account }
           await call('snapshot', account, undefined, 403)
           await action(account, { type: 'client.create', name: 'Denied', service: 'Design' }, 403)
-          await call('password', account, { currentPassword: temporary, newPassword: replacement })
+          const before = saved()
+          const beforeAdmin = before.users.find((u) => u.id === 'admin')
+          const sessionCount = sql
+            .prepare('SELECT COUNT(*) AS count FROM portal_sessions WHERE user_id=?')
+            .get('admin').count
+          const incorrect = await call(
+            'password',
+            account,
+            {
+              currentPassword: 'Synthetic-test-wrong-789!',
+              newPassword: replacement,
+            },
+            400,
+          )
+          assert.deepEqual(incorrect, {
+            error: 'Current password is incorrect. Enter the password you used to sign in.',
+            code: 'CURRENT_PASSWORD_INCORRECT',
+          })
+          assert.ok(passwords.calls.verify >= 2)
+          const afterIncorrect = saved()
+          const afterIncorrectAdmin = afterIncorrect.users.find((u) => u.id === 'admin')
+          assert.equal(afterIncorrectAdmin.passwordHash, beforeAdmin.passwordHash)
+          assert.equal(afterIncorrectAdmin.credentialVersion, beforeAdmin.credentialVersion)
+          assert.equal(afterIncorrectAdmin.mustChangePassword, true)
+          assert.deepEqual(afterIncorrect.audit, before.audit)
+          assert.equal(
+            sql.prepare('SELECT COUNT(*) AS count FROM portal_sessions WHERE user_id=?').get('admin').count,
+            sessionCount,
+          )
+          assert.equal((await call('session', old)).user.mustChangePassword, true)
+          await call(
+            'password',
+            { cookie: account.cookie },
+            { currentPassword: temporary, newPassword: replacement },
+            403,
+          )
+          await call('password', {}, { currentPassword: temporary, newPassword: replacement }, 401)
+          await call('password', account, { currentPassword: temporary, newPassword: 'Too-short' }, 400)
+          const changed = await call('password', account, { currentPassword: temporary, newPassword: replacement })
+          assert.ok(passwords.calls.hash >= 1)
+          assert.equal(changed.user.mustChangePassword, false)
+          assert.notEqual(account.cookie, old.cookie)
+          assert.equal(saved().audit.filter((entry) => entry.action === 'password.change').length, 1)
+          assert.equal(saved().users.find((u) => u.id === 'admin').credentialVersion, beforeAdmin.credentialVersion + 1)
           await call('session', old, undefined, 401)
           const restored = await call('session', account)
           assert.equal(restored.user.mustChangePassword, false)
           assert.equal(restored.csrfToken, account.csrf)
+          assert.equal((await call('snapshot', account)).user.id, 'admin')
         },
       )
       await t.test('Admin provisions employees and employee cannot provision anyone', async () => {
@@ -344,6 +390,7 @@ test(
         await call('session', employee, undefined, 401)
         await call('login', employee, { email: 'editor-changed@example.test', password: replacement })
         await action(account, { type: 'employee.resetPassword', id: employeeId, password: temporary })
+        assert.ok(passwords.calls.hash >= 4)
         await call('session', employee, undefined, 401)
         await action(account, { type: 'employee.deactivate', id: otherId })
         await call('session', other, undefined, 401)

@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { handlePortalApi } from '../src/portal/api.mjs'
 import { hashPassword, verifyPassword } from '../src/portal/auth.mjs'
 import { issueSession } from '../src/portal/store.mjs'
+import { fakePortalPasswords } from './support/portal-passwords.mjs'
 
 const origin = 'https://portal.test'
 const password = 'Synthetic-registration-123!'
@@ -31,7 +32,8 @@ function fixture() {
       }
     },
   }
-  const env = { PORTAL_DB: db }
+  const passwords = fakePortalPasswords()
+  const env = { PORTAL_DB: db, PORTAL_PASSWORDS: passwords }
   const state = () => JSON.parse(sql.prepare('SELECT document FROM portal_state WHERE id=1').get().document)
   const save = (value) =>
     sql.prepare('UPDATE portal_state SET revision=revision+1,document=? WHERE id=1').run(JSON.stringify(value))
@@ -57,7 +59,7 @@ function fixture() {
     const { token, csrfToken } = await issueSession(db, user)
     return { Cookie: `portal_session=${token}`, 'X-CSRF-Token': csrfToken }
   }
-  return { sql, state, save, request, login, as }
+  return { sql, state, save, request, login, as, env, passwords }
 }
 
 async function withAdmin(f) {
@@ -141,6 +143,7 @@ test('pending registrations remain private, duplicates preserve hash and identit
   assert.equal(pending.name, 'New Member')
   assert.equal(pending.designation, 'Employee')
   assert.equal(await verifyPassword(password, pending.passwordHash), true)
+  assert.equal(f.passwords.calls.hash, 1)
   assert.equal(f.state().users.length, 2)
   const duplicate = await f.request('register', {
     ...input,
@@ -158,6 +161,7 @@ test('pending registrations remain private, duplicates preserve hash and identit
   assert.equal((await f.login('member@example.test', 'Incorrect-long-password-123!')).status, 401)
   const waiting = await f.login('member@example.test')
   assert.equal(waiting.status, 403)
+  assert.equal(f.passwords.calls.verify, 2)
   assert.equal((await waiting.json()).error, 'Administrator approval required.')
   assert.equal(waiting.headers.get('set-cookie'), null)
   for (const path of ['snapshot', 'export', 'analytics']) assert.equal((await f.request(path)).status, 401)
@@ -256,6 +260,24 @@ test('pending registrations remain private, duplicates preserve hash and identit
   const loggedIn = await f.login('member@example.test')
   assert.equal(loggedIn.status, 200)
   assert.equal((await loggedIn.json()).user.mustChangePassword, false)
+})
+
+test('missing password namespace fails closed for registration and login without changing credentials or issuing sessions', async (t) => {
+  const f = fixture()
+  t.after(() => f.sql.close())
+  await withAdmin(f)
+  const before = f.state()
+  const sessionCount = f.sql.prepare('SELECT COUNT(*) AS count FROM portal_sessions').get().count
+  delete f.env.PORTAL_PASSWORDS
+  const registration = await f.request('register', { name: 'No Binding', email: 'new@example.test', password })
+  assert.equal(registration.status, 503)
+  assert.equal(registration.headers.get('set-cookie'), null)
+  assert.deepEqual(f.state(), before)
+  const login = await f.login('admin@example.test')
+  assert.equal(login.status, 503)
+  assert.equal(login.headers.get('set-cookie'), null)
+  assert.deepEqual(f.state(), before)
+  assert.equal(f.sql.prepare('SELECT COUNT(*) AS count FROM portal_sessions').get().count, sessionCount)
 })
 
 test('rejection purges credentials, decision races have a single winner, legacy state reads safely', async (t) => {

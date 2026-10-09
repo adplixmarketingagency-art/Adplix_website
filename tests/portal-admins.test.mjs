@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { handlePortalApi } from '../src/portal/api.mjs'
 import { hashPassword, verifyPassword } from '../src/portal/auth.mjs'
 import { issueSession } from '../src/portal/store.mjs'
+import { fakePortalPasswords } from './support/portal-passwords.mjs'
 
 const origin = 'https://portal.test'
 const password = 'Synthetic-admin-123!'
@@ -63,7 +64,8 @@ function fixture() {
       }
     },
   }
-  const env = { PORTAL_DB: db, PORTAL_ALLOW_HTTP_LOCAL: 'false' }
+  const passwords = fakePortalPasswords()
+  const env = { PORTAL_DB: db, PORTAL_PASSWORDS: passwords, PORTAL_ALLOW_HTTP_LOCAL: 'false' }
   const read = () => state
   const save = (value) => {
     state = value
@@ -83,7 +85,7 @@ function fixture() {
     const issued = await issueSession(db, user)
     return { Cookie: `portal_session=${issued.token}`, 'X-CSRF-Token': issued.csrfToken }
   }
-  return { close() {}, state: read, save, request, as }
+  return { close() {}, state: read, save, request, as, env, passwords, sessions }
 }
 
 async function withAdmin(fixtureState) {
@@ -155,6 +157,7 @@ test('Admin can create Admin accounts, employees cannot, and new Admins must cha
   assert.equal(created.mustChangePassword, true)
   assert.deepEqual(created.jobFunctions, ['Operations'])
   assert.equal(await verifyPassword(password, created.passwordHash), true)
+  assert.equal(f.passwords.calls.hash, 1)
   assert.equal(JSON.stringify(f.state().audit).includes(password), false)
   assert.equal(f.state().audit.at(-1).action, 'admin.create')
 
@@ -272,6 +275,8 @@ test('Admin deactivation keeps the final active Admin protected and new Admin ca
     createdAuth,
   )
   assert.equal(passwordResponse.status, 200)
+  assert.ok(f.passwords.calls.verify >= 2)
+  assert.ok(f.passwords.calls.hash >= 2)
   const passwordData = await passwordResponse.json()
   createdAuth.Cookie = passwordResponse.headers.get('set-cookie').split(';')[0]
   createdAuth['X-CSRF-Token'] = passwordData.csrfToken
@@ -421,6 +426,56 @@ test('Admin-created Employee can rotate temporary password and keep a valid sess
   const snapshot = await f.request('snapshot', undefined, freshAuth)
   assert.equal(snapshot.status, 200)
   assert.equal((await snapshot.json()).user.mustChangePassword, false)
+})
+
+test('missing password namespace blocks account creation, reset and rotation without changing state or sessions', async () => {
+  const f = fixture()
+  const { admin, auth } = await withAdmin(f)
+  const employee = {
+    id: 'employee',
+    role: 'Employee',
+    name: 'Employee',
+    employeeId: 'EMP',
+    email: 'employee@example.test',
+    passwordHash: await hashPassword(password),
+    active: true,
+    credentialVersion: 0,
+  }
+  f.state().users.push(employee)
+  const employeeAuth = await f.as(employee)
+  const before = structuredClone(f.state())
+  const sessionCount = f.sessions.size
+  delete f.env.PORTAL_PASSWORDS
+  for (const [path, body, credentials] of [
+    [
+      'actions',
+      { type: 'admin.create', name: 'New Admin', employeeId: 'A2', email: 'new@example.test', password },
+      auth,
+    ],
+    [
+      'actions',
+      {
+        type: 'employee.create',
+        name: 'New Employee',
+        employeeId: 'E2',
+        email: 'new-emp@example.test',
+        password,
+        jobFunctions: [],
+      },
+      auth,
+    ],
+    ['actions', { type: 'employee.resetPassword', id: employee.id, password: replacement }, auth],
+    ['password', { currentPassword: password, newPassword: replacement }, employeeAuth],
+  ]) {
+    const response = await f.request(path, body, credentials)
+    assert.equal(response.status, 503)
+    assert.equal(response.headers.get('set-cookie'), null)
+    assert.deepEqual(f.state(), before)
+    assert.equal(f.sessions.size, sessionCount)
+  }
+  assert.equal(admin.credentialVersion, 0)
+  assert.equal(f.passwords.calls.hash, 0)
+  assert.equal(f.passwords.calls.verify, 0)
 })
 
 test('Admins can assign Admin tasks and approvals require a rating', async (t) => {

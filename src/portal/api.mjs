@@ -1,15 +1,6 @@
 import { database, readState, mutate, session, issueSession, revokeUser, throttle } from './store.mjs'
-import {
-  normalizeEmail,
-  validPassword,
-  hashPassword,
-  verifyPassword,
-  publicUser,
-  tokenHash,
-  cookie,
-  clearCookie,
-  sameOrigin,
-} from './auth.mjs'
+import { normalizeEmail, validPassword, publicUser, tokenHash, cookie, clearCookie, sameOrigin } from './auth.mjs'
+import { hashPortalPassword, verifyPortalPassword } from './password-service.mjs'
 import { businessDate, dailyUpdateStatus, transitionTask, decorateTask, loginRecordFor } from './domain.mjs'
 import { buildAnalytics } from './analytics.mjs'
 import { analyticsWorkbook } from './excel.mjs'
@@ -256,7 +247,7 @@ const filters = (url) => {
   return result
 }
 
-async function action(db, actorId, credentialVersion, a) {
+async function action(db, actorId, credentialVersion, a, env) {
   let revoke = null,
     push = null
   await mutate(db, async (s) => {
@@ -316,7 +307,7 @@ async function action(db, actorId, credentialVersion, a) {
           employeeId = required(a.employeeId, 80),
           mail = email(a.email),
           funcs = jobFunctions(a.jobFunctions),
-          passwordHash = await hashPassword(a.password)
+          passwordHash = await hashPortalPassword(a.password, env)
         if (s.users.some((x) => x.email === mail || x.employeeId === employeeId))
           fail('Employee ID or email already exists.', 409)
         subjectId = id()
@@ -344,7 +335,7 @@ async function action(db, actorId, credentialVersion, a) {
           employeeId = required(a.employeeId, 80),
           mail = email(a.email),
           funcs = a.jobFunctions === undefined ? [] : jobFunctions(a.jobFunctions),
-          passwordHash = await hashPassword(a.password)
+          passwordHash = await hashPortalPassword(a.password, env)
         if (s.users.some((x) => x.email === mail || x.employeeId === employeeId))
           fail('Employee ID or email already exists.', 409)
         subjectId = id()
@@ -409,7 +400,7 @@ async function action(db, actorId, credentialVersion, a) {
         admin(actor)
         u = active(s, a.id)
         if (!u || u.role !== 'Employee') fail('Employee unavailable.', 404)
-        u.passwordHash = await hashPassword(a.password)
+        u.passwordHash = await hashPortalPassword(a.password, env)
         u.mustChangePassword = true
         u.credentialVersion = (u.credentialVersion || 0) + 1
         revoke = u.id
@@ -781,7 +772,7 @@ export async function handlePortalApi(request, env, context) {
       if (!state.users.some((x) => x.active && x.role === 'Admin')) fail('Portal setup required.', 503)
       if (state.users.some((x) => x.email === mail) || (state.registrations || []).some((x) => x.email === mail))
         return response({ ok: true, message: REGISTRATION_MESSAGE }, 202)
-      const passwordHash = await hashPassword(body.password)
+      const passwordHash = await hashPortalPassword(body.password, env)
       await mutate(db, (s) => {
         if (!s.users.some((x) => x.active && x.role === 'Admin')) fail('Portal setup required.', 503)
         if (s.users.some((x) => x.email === mail) || (s.registrations || []).some((x) => x.email === mail)) return
@@ -819,9 +810,10 @@ export async function handlePortalApi(request, env, context) {
       const { state } = await readState(db),
         user = state.users.find((x) => x.email === mail && x.active)
       const pending = !user && (state.registrations || []).find((x) => x.email === mail && x.status === 'Pending')
-      const verified = await verifyPassword(
+      const verified = await verifyPortalPassword(
         body.password,
         user?.passwordHash || pending?.passwordHash || DUMMY_PASSWORD_HASH,
+        env,
       )
       if (!verified) fail('Invalid credentials.', 401)
       if (pending) {
@@ -871,8 +863,15 @@ export async function handlePortalApi(request, env, context) {
     }
     if (endpoint === 'password' && method === 'POST') {
       const body = await json(request)
-      if (!(await verifyPassword(body.currentPassword, user.passwordHash))) fail('Invalid credentials.', 401)
-      const passwordHash = await hashPassword(body.newPassword)
+      if (!(await verifyPortalPassword(body.currentPassword, user.passwordHash, env)))
+        return response(
+          {
+            error: 'Current password is incorrect. Enter the password you used to sign in.',
+            code: 'CURRENT_PASSWORD_INCORRECT',
+          },
+          400,
+        )
+      const passwordHash = await hashPortalPassword(body.newPassword, env)
       await mutate(db, (s) => {
         const current = active(s, user.id)
         if (!current || current.passwordHash !== user.passwordHash) fail('Credentials changed.', 409)
@@ -896,7 +895,7 @@ export async function handlePortalApi(request, env, context) {
       return response(snapshot(state, currentActor(state, user.id, row.credential_version)))
     }
     if (endpoint === 'actions' && method === 'POST') {
-      const push = await action(db, user.id, row.credential_version, await json(request))
+      const push = await action(db, user.id, row.credential_version, await json(request), env)
       if (push?.length)
         context?.waitUntil?.(
           sendBroadcastPush(

@@ -49,6 +49,7 @@ test('Worker preserves asset responses including HEAD, range, redirects and cach
   const entry = (await read('src/index.js'))
     .replace('./security-headers.mjs', new URL('../src/security-headers.mjs', import.meta.url).href)
     .replace('./portal/api.mjs', new URL('../src/portal/api.mjs', import.meta.url).href)
+    .replace('./portal/password-object.mjs', new URL('../src/portal/password-object.mjs', import.meta.url).href)
   const { default: worker } = await import(`data:text/javascript,${encodeURIComponent(entry)}`)
   for (const { method, status, body, extra } of [
     { method: 'GET', status: 200, body: 'ok', extra: { 'Cache-Control': 'public, max-age=3600', ETag: '"v1"' } },

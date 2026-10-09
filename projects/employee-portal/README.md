@@ -1,6 +1,6 @@
 # Adplix Employee Portal
 
-Status: Worker and production D1 schema deployed. At the 9 October 2026 readiness check the database had no accounts; first Admin provisioning and authenticated production verification remain required. Local database-backed and browser workflows are covered separately.
+Status: Worker and production D1 schema deployed; first Admin provisioned. Cloudflare Free adaptation routes password hashing to an internal SQLite-backed Durable Object, preserving existing hashes and D1 data. The full local quality gate passes, including real local Durable Object browser workflows; deployment/runtime verification and the Admin's private initial password rotation remain required. See the delivery guide for current evidence.
 
 - [Complete requirements and implementation plan](SPECIFICATION.md)
 - [Security hardening and portal security requirements](SECURITY.md)
