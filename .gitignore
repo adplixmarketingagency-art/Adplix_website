@@ -15,9 +15,15 @@ node_modules/
 /.dev.vars
 /.dev.vars.*
 /.cloudflare/
-/.opencode/
+/.opencode/omnirush/
+/.opencode/logs/
+/.opencode/runtime/
 /.claude/logs/
 /.claude/runtime/
+/projects/employee-portal/previews/
+/test-results/
+/playwright-report/
+/coverage/
 
 # Environment files
 .env
