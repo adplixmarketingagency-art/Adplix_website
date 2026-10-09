@@ -1,6 +1,6 @@
 # Adplix Employee Portal
 
-Status: Worker and production D1 schema deployed; first Admin provisioned. Cloudflare Free adaptation routes password hashing to an internal SQLite-backed Durable Object, preserving existing hashes and D1 data. The full local quality gate passes, including real local Durable Object browser workflows; deployment/runtime verification and the Admin's private initial password rotation remain required. See the delivery guide for current evidence.
+Status: Cloudflare Free adaptation deployed: password hashing runs in an internal SQLite-backed Durable Object, preserving existing hashes and D1 data. The full local quality gate passes, including real local Durable Object browser workflows. Production synthetic verification and read-only deployment checks passed on both origins without CPU-limit errors; the provisioned Admin's private initial password rotation remains required. See the delivery guide for current evidence.
 
 - [Complete requirements and implementation plan](SPECIFICATION.md)
 - [Security hardening and portal security requirements](SECURITY.md)
