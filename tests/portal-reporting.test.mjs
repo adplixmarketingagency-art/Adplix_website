@@ -112,7 +112,28 @@ test('analytics records first login and caps employee duration at the business c
   )
   assert.equal(report.employees[0].firstLoginAt, '2026-10-05T04:45:00.000Z')
   assert.equal(report.employees[0].loginDays, 1)
-  assert.equal(report.employees[0].loginSeconds, 26100)
+  assert.equal(report.employees[0].loginSeconds, 31500)
+})
+
+test('historical daily update status evaluates through the 19:00 business close', () => {
+  const report = buildAnalytics(
+    {
+      ...snapshot,
+      updates: [],
+      absences: [
+        {
+          employeeId: 'e',
+          kind: 'permission',
+          start: '2026-10-05T05:00:00Z',
+          end: '2026-10-05T12:30:00Z',
+          status: 'Approved',
+        },
+      ],
+    },
+    { from: '2026-10-05', to: '2026-10-05', employeeId: 'e' },
+    now,
+  )
+  assert.equal(report.employees[0].updateMissing, 1)
 })
 
 test('analytics reports Admin login attendance, selected Admin filters, and no Admin update debt', () => {
@@ -304,7 +325,10 @@ test('xlsx contains six valid package sheets, numeric seconds and inline-only ho
   const all = Object.values(zip).map(strFromU8).join('')
   assert.doesNotMatch(all, /<f>|private|subscription|password/i)
   assert.match(strFromU8(zip['xl/worksheets/sheet4.xml']), /@SUM\(A1\)/)
-  assert.match(strFromU8(zip['xl/worksheets/sheet6.xml']), /Fraction from 0 to 1/)
+  const definitions = strFromU8(zip['xl/worksheets/sheet6.xml'])
+  assert.match(definitions, /Fraction from 0 to 1/)
+  assert.match(definitions, /19:00 Asia\/Kolkata/)
+  assert.match(definitions, /14:00–19:00/)
 })
 
 test('absence export includes inclusive leave and permission overlapping selected date', () => {

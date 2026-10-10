@@ -263,9 +263,16 @@ const validateSubscription = (sub) => {
 const snapshot = (state, user, now = new Date()) => {
   const isAdmin = user.role === 'Admin'
   const visibleEmployees = state.users.filter((u) => (u.active || isAdmin) && (isAdmin || u.role === 'Employee'))
+  const deliveredNotifications = (state.notifications || []).filter((x) => x.employeeId === user.id)
+  const notificationSenderIds = new Set(
+    deliveredNotifications
+      .map((notification) => notification.senderId)
+      .filter((senderId) => typeof senderId === 'string'),
+  )
   return {
     user: publicUser(user),
     profileGlimpses: visibleEmployees.map(profileGlimpse),
+    notificationProfiles: state.users.filter((person) => notificationSenderIds.has(person.id)).map(profileGlimpse),
     employees: visibleEmployees.map((u) =>
       isAdmin
         ? {
@@ -355,9 +362,8 @@ const snapshot = (state, user, now = new Date()) => {
           author: author ? { id: author.id, name: author.name, role: author.role } : null,
         }
       }),
-    notifications: (state.notifications || [])
-      .filter((x) => x.employeeId === user.id)
-      .map(({ id, title, text, createdAt, readAt, senderId, taskId, transitionVersion, kind }) => {
+    notifications: deliveredNotifications.map(
+      ({ id, title, text, createdAt, readAt, senderId, taskId, transitionVersion, kind }) => {
         const sender = senderId && state.users.find((u) => u.id === senderId)
         return {
           id,
@@ -369,7 +375,8 @@ const snapshot = (state, user, now = new Date()) => {
           ...(taskId ? { taskId, transitionVersion } : {}),
           sender: sender ? { id: sender.id, name: sender.name, role: sender.role } : null,
         }
-      }),
+      },
+    ),
     serverNow: now.toISOString(),
     today: businessDate(now),
     updateStatus: dailyUpdateStatus(user.id, state.updates, state.absences, now, user),

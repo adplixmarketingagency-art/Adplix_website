@@ -14,30 +14,32 @@ import { buildAnalytics } from '../src/portal/analytics.mjs'
 const at = (day, time) => `${day}T${time}+05:30`
 const interval = (start, end) => [{ start, end }]
 
-test('employee login records are first-login-per-day and stop at 17:30', () => {
+test('employee login records are first-login-per-day and stop at 19:00', () => {
   const records = []
   loginRecordFor(records, 'e', '2026-10-05', at('2026-10-05', '10:15:00'))
   loginRecordFor(records, 'e', '2026-10-05', at('2026-10-05', '11:00:00'))
   loginRecordFor(records, 'e', '2026-10-06', at('2026-10-06', '10:05:00'))
   assert.equal(records.length, 2)
   assert.equal(records[0].firstLoginAt, '2026-10-05T04:45:00.000Z')
-  assert.equal(loginSeconds(records[0], at('2026-10-05', '18:00:00')), 26100)
+  assert.equal(loginSeconds(records[0], at('2026-10-05', '18:00:00')), 27900)
+  assert.equal(loginSeconds(records[0], at('2026-10-05', '20:00:00')), 31500)
   assert.equal(loginSeconds(records[1], at('2026-10-06', '12:05:00')), 7200)
 })
 test('working calendar boundaries, lunch, Sunday and multiple days', () => {
   assert.equal(businessDate('2026-10-04T20:00:00Z'), '2026-10-05')
   for (const [start, end, seconds] of [
     [at('2026-10-05', '10:00:00'), at('2026-10-05', '17:30:00'), 23400],
+    [at('2026-10-05', '17:30:00'), at('2026-10-05', '19:00:00'), 5400],
     [at('2026-10-05', '12:30:00'), at('2026-10-05', '14:30:00'), 3600],
-    [at('2026-10-05', '14:00:00'), at('2026-10-06', '12:00:00'), 19800],
-    [at('2026-10-03', '12:00:00'), at('2026-10-05', '15:00:00'), 30600],
-    [at('2026-10-04', '10:00:00'), at('2026-10-04', '17:30:00'), 0],
+    [at('2026-10-05', '14:00:00'), at('2026-10-06', '12:00:00'), 25200],
+    [at('2026-10-03', '12:00:00'), at('2026-10-05', '15:00:00'), 36000],
+    [at('2026-10-04', '10:00:00'), at('2026-10-04', '19:00:00'), 0],
   ])
     assert.equal(workingSeconds(interval(start, end), []), seconds)
 })
 
 test('approved absence union and retrospective recomputation', () => {
-  const work = interval(at('2026-10-05', '10:00:00'), at('2026-10-05', '17:30:00'))
+  const work = interval(at('2026-10-05', '10:00:00'), at('2026-10-05', '19:00:00'))
   const absences = [
     {
       employeeId: 'e',
@@ -55,24 +57,24 @@ test('approved absence union and retrospective recomputation', () => {
     },
     { employeeId: 'e', kind: 'leave', start: '2026-10-06', end: '2026-10-07', status: 'Approved' },
   ]
-  assert.equal(workingSeconds(work, absences), 18000)
+  assert.equal(workingSeconds(work, absences), 23400)
   assert.equal(
     workingSeconds(
       work,
       absences.map((a) => ({ ...a, status: 'Pending' })),
     ),
-    23400,
+    28800,
   )
-  assert.equal(workingSeconds([...work, ...work], absences), 18000)
+  assert.equal(workingSeconds([...work, ...work], absences), 23400)
   assert.equal(
     decorateTask(
       { assigneeId: 'other', intervals: work, state: 'In-progress', deadline: at('2026-10-05', '16:00:00') },
       absences,
-      at('2026-10-05', '17:30:00'),
+      at('2026-10-05', '19:00:00'),
     ).workSeconds,
-    23400,
+    28800,
   )
-  assert.equal(workingSeconds(interval(at('2026-10-05', '10:00:00'), at('2026-10-07', '17:30:00')), absences), 18000)
+  assert.equal(workingSeconds(interval(at('2026-10-05', '10:00:00'), at('2026-10-07', '19:00:00')), absences), 23400)
 })
 
 test('transitions enforce ownership, role, reason and preserve audit intervals', () => {

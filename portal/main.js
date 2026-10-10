@@ -15,7 +15,7 @@ import { sortTasks, taskStateClass } from './task-presentation.mjs'
 import { preparePhoto, PROFILE_PHOTO_SIZE, savedPhotoFile } from './photo.mjs'
 import { cropPhoto } from './photo-crop-dialog.mjs'
 import { serverOffset, todayLoginExpired } from './today-login.mjs'
-import { profileName, installProfileGlimpses } from './profile-glimpse.mjs'
+import { profileName, safeProfilePhoto, installProfileGlimpses } from './profile-glimpse.mjs'
 import { createInboxTracker } from './inbox.mjs'
 import {
   devicePushGuidance,
@@ -70,6 +70,24 @@ const senderIdentity = (sender) => {
   return `From ${esc(sender.name)}${role}`
 }
 const profileFor = (id) => arr(state.snapshot?.profileGlimpses).find((person) => String(person.id) === String(id))
+// Sender profiles are scoped to messages delivered to this account. They must
+// never feed the ordinary team-name lookup above.
+const senderProfileFor = (sender) => {
+  if (!sender || sender.id == null || !sender.name) return null
+  const delivered = arr(state.snapshot?.notifications).some((item) => String(item.sender?.id) === String(sender.id))
+  if (!delivered) return null
+  return (
+    arr(state.snapshot?.notificationProfiles).find(
+      (person) => person && String(person.id) === String(sender.id) && person.name === sender.name,
+    ) || null
+  )
+}
+const inboxSender = (sender) => {
+  if (!sender || typeof sender.name !== 'string' || !sender.name.trim()) return ''
+  const profile = senderProfileFor(sender)
+  const role = sender.role === 'Admin' || sender.role === 'Employee' ? ` · ${esc(sender.role)}` : ''
+  return `From ${profile ? profileName(profile.id, sender.name) : esc(sender.name)}${role}`
+}
 const noteAuthor = (note) =>
   note.author ||
   profileFor(note.authorId) ||
@@ -78,7 +96,15 @@ const personName = (person, fallback = '') => {
   const visible = person && profileFor(person.id)
   return visible ? profileName(visible.id, visible.name) : esc(fallback)
 }
-const glimpses = installProfileGlimpses({ root, getProfiles: () => arr(state.snapshot?.profileGlimpses) })
+const glimpses = installProfileGlimpses({
+  root,
+  getProfiles: () => [
+    ...arr(state.snapshot?.profileGlimpses),
+    ...arr(state.snapshot?.notificationProfiles).filter(
+      (person) => !profileFor(person?.id) && senderProfileFor(person),
+    ),
+  ],
+})
 const admin = () => state.user?.role === 'Admin'
 const adminViews = ['team', 'clients', 'admin-tasks', 'reviews', 'notes', 'analytics']
 const permittedView = (name) => (!admin() && adminViews.includes(name) ? 'dashboard' : name)
@@ -542,7 +568,7 @@ function syncPushUI() {
 }
 function notificationItem(n) {
   const type = notificationType(n)
-  return `<div class="list-item ${n.readAt ? '' : 'unread'}" data-notification-id="${esc(n.id)}" data-read-at="${esc(n.readAt || '')}"><div class="split"><strong>${esc(n.title)}</strong><small>${fmtDateTime(n.createdAt)}</small></div>${type ? `<small class="tag">${type}</small>` : ''}${senderIdentity(n.sender) ? `<small class="sender-identity">${senderIdentity(n.sender)}</small>` : ''}<p>${esc(n.text)}</p>${!n.readAt ? btn('Mark as read', 'notification-read', n.id, 'small') : ''}</div>`
+  return `<div class="list-item ${n.readAt ? '' : 'unread'}" data-notification-id="${esc(n.id)}" data-read-at="${esc(n.readAt || '')}"><div class="split"><strong>${esc(n.title)}</strong><small>${fmtDateTime(n.createdAt)}</small></div>${type ? `<small class="tag">${type}</small>` : ''}${inboxSender(n.sender) ? `<small class="sender-identity">${inboxSender(n.sender)}</small>` : ''}<p>${esc(n.text)}</p>${!n.readAt ? btn('Mark as read', 'notification-read', n.id, 'small') : ''}</div>`
 }
 function syncInbox(notifications) {
   syncInboxCount(notifications)
@@ -561,7 +587,12 @@ function syncInbox(notifications) {
     const item = list[index]
     const id = String(item.id)
     let node = existing.get(id)
-    if (!node || (node.dataset.readAt !== (item.readAt || '') && !node.contains(document.activeElement))) {
+    if (
+      !node ||
+      ((node.dataset.readAt !== (item.readAt || '') ||
+        node.querySelector('.sender-identity')?.innerHTML !== inboxSender(item.sender)) &&
+        !node.contains(document.activeElement))
+    ) {
       const template = document.createElement('template')
       template.innerHTML = notificationItem(item)
       const updated = template.content.firstElementChild
@@ -874,7 +905,27 @@ function analyticsView() {
             .join('')}</div>`,
         )
       : empty('No report loaded yet. Apply filters to view saved records.')
-  }${a ? section('Completed work over time', `${analyticsQuickFilters()}${hasTimeline ? trendChart(arr(a.trend)) : empty('No completions in this range.')}`) : ''}${a ? section('Team attendance & work', arr(a.employees).length ? employeeChart(a.employees, (person) => personName(profileFor(person.id), person.name)) : empty('No team member records for these filters.')) : ''}`
+  }${a ? section('Completed work over time', `${analyticsQuickFilters()}${hasTimeline ? trendChart(arr(a.trend)) : empty('No completions in this range.')}`) : ''}${
+    a
+      ? section(
+          'Team attendance & work',
+          arr(a.employees).length
+            ? employeeChart(
+                a.employees,
+                (person) => `<span class="employee-name">${personName(profileFor(person.id), person.name)}</span>`,
+                (person) =>
+                  photoAvatar(
+                    {
+                      name: person.name,
+                      profile: { photoDataUrl: safeProfilePhoto(profileFor(person.id)?.photoDataUrl) },
+                    },
+                    'employee-avatar',
+                  ),
+              )
+            : empty('No team member records for these filters.'),
+        )
+      : ''
+  }`
 }
 
 let priorFocus
@@ -930,7 +981,7 @@ function syncLiveAttendance() {
     if (person)
       node.textContent = node.textContent.replace(
         /^\d+h \d+m/,
-        duration(Math.min(Number(person.todayLoginSeconds) || 0, 17.5 * 3600)),
+        duration(Math.min(Number(person.todayLoginSeconds) || 0, 19 * 3600)),
       )
   })
   syncTodayAttendance()

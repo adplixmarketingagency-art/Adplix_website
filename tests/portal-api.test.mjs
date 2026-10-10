@@ -240,6 +240,11 @@ test('recipient snapshots pick up notes and broadcasts without push, expose only
   assert.deepEqual((await snapshot(employeeHeaders)).notifications, [])
 
   assert.equal((await send({ type: 'note.create', text: 'Private note', recipientIds: ['employee'] })).status, 200)
+  assert.deepEqual(
+    (await snapshot(employeeHeaders)).notificationProfiles.map(({ id }) => id),
+    ['admin'],
+  )
+  assert.deepEqual((await snapshot(otherHeaders)).notificationProfiles, [])
   assert.equal(
     (await send({ type: 'broadcast.create', title: 'News', text: 'Hello team', recipientIds: [] })).status,
     200,
@@ -274,6 +279,16 @@ test('recipient snapshots pick up notes and broadcasts without push, expose only
   assert.equal(mine.notifications[0].readAt, null)
   assert.equal(JSON.stringify(mine.notifications).includes('private-admin@example.test'), false)
   assert.equal(JSON.stringify(mine.notifications).includes('private-hash'), false)
+  // The sender is hidden from the employee's general team glimpse, but is
+  // available through the separately scoped notification profile list.
+  assert.deepEqual(
+    mine.notificationProfiles.map(({ id }) => id),
+    ['admin'],
+  )
+  assert.deepEqual(
+    colleague.notificationProfiles.map(({ id }) => id),
+    ['admin'],
+  )
 
   const notificationId = mine.notifications[0].id
   assert.equal(

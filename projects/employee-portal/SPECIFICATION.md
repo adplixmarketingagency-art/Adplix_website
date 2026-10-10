@@ -18,7 +18,7 @@ The company shoots, edits, and posts Instagram reels; creates Canva posters; and
 - Admin assigns tasks by employee job function, views all tasks, approves/rejects work, manages employees and clients, posts notes, and sends browser-notification broadcasts.
 - Employees manage only their own task states, see colleagues' tasks read-only, and provide daily work updates.
 - Concurrent tasks are allowed. Overdue task surfaces on the employee dashboard are red themed.
-- Track task time using Monday–Saturday, 10:00–13:00 and 14:00–17:30. Exclude Sunday, lunch, and approved leave/permission.
+- Track task time using Monday–Saturday, 10:00–13:00 and 14:00–19:00. Exclude Sunday, lunch, and approved leave/permission.
 - Employees request leave and hourly permission; Admin approves or rejects requests.
 - Admin receives team and individual performance graphs and an Excel download.
 
@@ -115,7 +115,7 @@ Every change stores actor, server timestamp, previous/new state, and task versio
 
 ## 6. Working-time calculation
 
-Confirmed calendar: Monday–Saturday, Asia/Kolkata, 10:00–13:00 and 14:00–17:30. A full working day is **6 hours 30 minutes**. Sunday, lunch, and hours outside these windows contribute zero.
+Confirmed calendar: Monday–Saturday, Asia/Kolkata, 10:00–13:00 and 14:00–19:00. A full working day is **8 hours**. Sunday, lunch, and hours outside these windows contribute zero.
 
 Store timestamps in UTC; derive business dates and working windows in Asia/Kolkata, independently of the browser timezone. For each task:
 
@@ -124,7 +124,7 @@ Store timestamps in UTC; derive business dates and working windows in Asia/Kolka
 Use half-open intervals [start, end). Intersect intervals before subtracting absence to avoid negative durations or double deductions. Running totals use server time for the open interval. Store duration in seconds and round only for display/export.
 
 - Browser closure or logout does not stop an In-progress task's eligible elapsed time.
-- Starting before 10:00 counts from 10:00; starting during lunch counts from 14:00; starting after 17:30 counts from the next working window.
+- Starting before 10:00 counts from 10:00; starting during lunch counts from 14:00; starting after 19:00 counts from the next working window.
 - Completing freezes elapsed time; reopening adds another active interval without counting the completed gap.
 - Approved employee absence is excluded from every applicable concurrent task.
 - Pending/rejected absence has no time effect.
@@ -135,12 +135,12 @@ Use half-open intervals [start, end). Intersect intervals before subtracting abs
 
 | Scenario (no leave unless stated) | Counted time |
 | --- | --- |
-| Monday 10:00 → Monday 17:30 | 6h 30m |
+| Monday 10:00 → Monday 19:00 | 8h |
 | Monday 12:30 → Monday 14:30 | 1h |
-| Monday 14:00 → Tuesday 12:00 | 5h 30m |
-| Saturday 12:00 → Monday 15:00 | 8h 30m |
-| Monday 10:00 → 17:30, approved permission 15:00–16:00 | 5h 30m |
-| Monday 10:00 → 17:30, approved permission 12:30–14:30 | 5h 30m |
+| Monday 14:00 → Tuesday 12:00 | 7h |
+| Saturday 12:00 → Monday 15:00 | 10h |
+| Monday 10:00 → 19:00, approved permission 15:00–16:00 | 7h |
+| Monday 10:00 → 19:00, approved permission 12:30–14:30 | 7h |
 | Complete 12:00, reopen 15:00, complete 16:00 | Add 1h to time accumulated before noon |
 | Same active day, approved permission 15:00–16:00 and 15:30–16:30 | Deduct combined 1h 30m, not 2h |
 

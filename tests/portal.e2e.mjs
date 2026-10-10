@@ -44,6 +44,26 @@ async function submit(form, name) {
 async function saved(page) {
   await expect(page.locator('#feedback')).toContainText('Saved successfully.')
 }
+async function saveSyntheticPhoto(page) {
+  const photo = await page.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 128
+    const context = canvas.getContext('2d')
+    context.fillStyle = '#a9352a'
+    context.fillRect(0, 0, 128, 128)
+    return canvas.toDataURL('image/jpeg', 0.85)
+  })
+  const session = await (await page.request.get(base + '/api/portal/session')).json()
+  const result = await page.request.post(base + '/api/portal/actions', {
+    headers: { Origin: base, 'X-CSRF-Token': session.csrfToken },
+    data: { type: 'profile.photo', photo },
+  })
+  assert.equal(result.status(), 200, 'Synthetic photo saved through the real profile action')
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  const snapshot = await (await page.request.get(base + '/api/portal/snapshot')).json()
+  assert.equal(snapshot.user.profile.photoDataUrl, photo)
+  return photo
+}
 async function noOverflow(page) {
   assert.ok(
     await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
@@ -245,6 +265,7 @@ try {
   await adminPage.setViewportSize({ width: 1440, height: 1000 })
   await login(adminPage, 'admin@example.test', true)
   await verifyProfilePhoto(adminPage, screenshots, 'admin')
+  const adminPhoto = await saveSyntheticPhoto(adminPage)
   // Mobile install instructions are real DOM coverage, not physical-device push proof.
   const iosContext = await browser.newContext({
     storageState: await adminContext.storageState(),
@@ -367,6 +388,12 @@ try {
   }
   await navigate(adminPage, 'Analytics')
   await checkProgress(adminPage, 0)
+  const adminProgress = adminPage.locator('.employee-row[aria-label="Test Admin, Admin"]')
+  await expect(adminProgress.locator('.employee-avatar img')).toHaveAttribute('src', adminPhoto)
+  await expect(adminProgress.locator('.employee-name')).toHaveCSS('font-weight', '750')
+  await expect(editorProgress(adminPage).locator('.employee-avatar')).toHaveText('TE')
+  await expect(editorProgress(adminPage).locator('.employee-avatar')).toHaveAttribute('class', /employee-avatar/)
+  await expect(editorProgress(adminPage).locator('.employee-name')).toHaveCSS('font-weight', '750')
   await expect(editorProgress(adminPage)).toContainText("Today's first login")
   await expect(editorProgress(adminPage).locator('.assignment-slot.task-type-video-editing.pending')).toHaveCount(2)
   await expect(editorProgress(adminPage).locator('.assignment-slot.task-type-canva-poster.pending')).toHaveCount(1)
@@ -431,6 +458,73 @@ try {
   await expect(inbox.locator('[data-notification-id]').filter({ hasText: 'Production update' })).toContainText(
     'From Test Admin · Admin',
   )
+  const employeeSnapshot = await (await employeePage.request.get(base + '/api/portal/snapshot')).json()
+  assert.ok(
+    employeeSnapshot.notificationProfiles.some(
+      (person) => person.name === 'Test Admin' && person.photoDataUrl === adminPhoto,
+    ),
+  )
+  assert.ok(!employeeSnapshot.profileGlimpses.some((person) => person.name === 'Test Admin'))
+  const sender = inbox
+    .locator('[data-notification-id]')
+    .filter({ hasText: 'Production update' })
+    .locator('.sender-identity .profile-name')
+  const senderCard = employeePage.getByRole('dialog', { name: 'Profile of Test Admin', exact: true })
+  const senderViewer = employeePage.getByRole('dialog', { name: 'Photo of Test Admin', exact: true })
+  await sender.click()
+  await expect(senderCard).toBeVisible()
+  await expect(senderCard).toContainText('Admin')
+  await expect(senderCard).not.toContainText('admin@example.test')
+  await expect(senderCard).not.toContainText('Unsaved profile details')
+  await expect(senderCard).not.toContainText('phone')
+  await senderCard.getByRole('button', { name: 'View profile photo' }).click()
+  await expect(senderViewer.locator('img')).toHaveAttribute('src', adminPhoto)
+  await senderViewer.getByRole('button', { name: 'Close profile photo' }).click()
+  await expect(senderCard.getByRole('button', { name: 'View profile photo' })).toBeFocused()
+  await employeePage.keyboard.press('Escape')
+  await expect(sender).toBeFocused()
+  await sender.hover()
+  await expect(senderCard).toBeVisible()
+  await employeePage.keyboard.press('Escape')
+  await employeePage.waitForTimeout(0)
+  await employeePage.getByRole('button', { name: 'Refresh', exact: true }).focus()
+  await sender.focus()
+  await expect(senderCard).toBeVisible()
+  await sender.click()
+  await expect(senderCard.getByRole('button', { name: 'View profile photo' })).toBeFocused()
+  await navigate(employeePage, 'Overview')
+  await expect(senderCard).toHaveCount(0)
+  await navigate(employeePage, 'Inbox')
+  const touchContext = await browser.newContext({
+    storageState: await employeeContext.storageState(),
+    viewport: { width: 375, height: 812 },
+    hasTouch: true,
+    isMobile: true,
+    reducedMotion: 'reduce',
+  })
+  try {
+    const touchPage = await touchContext.newPage()
+    track(touchPage)
+    await touchPage.goto(base + '/portal/#notifications')
+    await touchPage
+      .locator('[data-notification-id]')
+      .filter({ hasText: 'Production update' })
+      .locator('.sender-identity .profile-name')
+      .tap()
+    const touchCard = touchPage.getByRole('dialog', { name: 'Profile of Test Admin' })
+    await expect(touchCard).toBeVisible()
+    await noOverflow(touchPage)
+    await touchCard.getByRole('button', { name: 'View profile photo' }).tap()
+    await expect(touchPage.getByRole('dialog', { name: 'Photo of Test Admin' }).locator('img')).toHaveAttribute(
+      'src',
+      adminPhoto,
+    )
+    await touchPage.getByRole('button', { name: 'Close profile photo' }).tap()
+    await touchCard.getByRole('button', { name: 'Close profile card' }).tap()
+    await expect(touchCard).toHaveCount(0)
+  } finally {
+    await touchContext.close()
+  }
   await expect(inbox).not.toContainText('admin@example.test')
   await expect(inbox).not.toContainText('A private note for the other Admin')
   await expect(inbox.locator('.tag').filter({ hasText: 'Note' })).not.toHaveCount(0)

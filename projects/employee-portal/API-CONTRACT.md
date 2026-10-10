@@ -62,12 +62,13 @@ Admin snapshots additionally contain `registrations:[{id,name,email,status,creat
 
 `src/portal/domain.mjs` exports:
 - `businessDate(now)` → YYYY-MM-DD.
-- `workingSeconds(intervals, absences, now)` → seconds, approved absences only, half-open unions, lunch/Sunday excluded.
+- `workingSeconds(intervals, absences, now)` → seconds, approved absences only, half-open unions, lunch/Sunday excluded; eligible windows are Monday–Saturday 10:00–13:00 and 14:00–19:00 Asia/Kolkata.
+- `loginSeconds(record, now)` → elapsed seconds from the first login through the earlier of `now` or 19:00 Asia/Kolkata for that business date; `currentLoginRecord` expires at that cutoff.
 - `dailyUpdateStatus(employeeId, updates, absences, now, employee?)` → updateStatus; optional employee lifecycle exempts non-employment dates.
 - `transitionTask(task, actor, nextState, now, reason='')` → new task with intervals/events/version; throws Error with status on invalid actor/state.
 - `decorateTask(task, absences, now)` → task with workSeconds/overdue, selecting assignee absences.
 
-`src/portal/analytics.mjs`: `buildAnalytics(snapshot, filters={}, now)` returns `{summary:{total,assigned,inProgress,completed,approved,overdue,onTimeRate,workSeconds},employees:[{id,name,assigned,inProgress,completed,approved,overdue,onTimeRate,workSeconds,rejections,updateOnTime,updateLate,updateMissing,updateExempt}],trend:[{date,completed,approved}],tasks,filters}`. Completed summary means state Completed; trend uses completion event dates. Explain filter date meanings and duration overlap.
+`src/portal/analytics.mjs`: `buildAnalytics(snapshot, filters={}, now)` returns `{summary:{total,assigned,inProgress,completed,approved,overdue,onTimeRate,workSeconds},employees:[{id,name,assigned,inProgress,completed,approved,overdue,onTimeRate,workSeconds,rejections,updateOnTime,updateLate,updateMissing,updateExempt}],trend:[{date,completed,approved}],tasks,filters}`. Completed summary means state Completed; trend uses completion event dates; historical daily-update status is evaluated at the 19:00 Asia/Kolkata business close. Explain filter date meanings and duration overlap.
 
 `src/portal/excel.mjs`: `analyticsWorkbook(analytics,snapshot)` → Uint8Array of valid XLSX, untrusted text always inline strings (no formulas); sheets Summary, Employees, Tasks, Daily Updates, Absences, Definitions.
 

@@ -299,6 +299,78 @@ test('snapshot glimpses whitelist visible profiles by role while preserving exis
   assert.equal(employeeSnapshot.user.email, 'viewer@example.test')
 })
 
+test('notification profiles include only unique, known senders of the signed-in inbox with safe profile fields', async () => {
+  const viewer = user('viewer', 'Employee'),
+    other = user('other', 'Employee'),
+    sender = user('sender', 'Admin'),
+    unrelated = user('unrelated', 'Admin'),
+    malformed = user('malformed', 'Admin'),
+    inactive = user('inactive', 'Employee')
+  sender.name = 'Sender Name'
+  sender.designation = 'Team lead'
+  sender.jobFunctions = ['Design']
+  sender.profile.photoDataUrl = photo
+  sender.passwordHash = 'private-password'
+  sender.session = 'private-session'
+  unrelated.profile.photoDataUrl = photo
+  malformed.profile.photoDataUrl = 'data:image/jpeg;base64,PHN2Zz4='
+  inactive.active = false
+  inactive.profile.photoDataUrl = photo
+  const f = fixture([viewer, other, sender, unrelated, malformed, inactive])
+  f.state.notifications.push(
+    { id: 'one', employeeId: viewer.id, senderId: sender.id, title: 'One' },
+    { id: 'two', employeeId: viewer.id, senderId: sender.id, title: 'Two' },
+    { id: 'three', employeeId: other.id, senderId: unrelated.id, title: 'Three' },
+    { id: 'four', employeeId: viewer.id, senderId: malformed.id, title: 'Four' },
+    { id: 'five', employeeId: viewer.id, senderId: inactive.id, title: 'Five' },
+    { id: 'six', employeeId: viewer.id, senderId: 'unknown', title: 'Six' },
+    { id: 'seven', employeeId: viewer.id, title: 'Legacy senderless' },
+    { id: 'eight', employeeId: sender.id, senderId: inactive.id, title: 'Admin inbox' },
+  )
+  const snapshot = async (person, token) => (await call(f, 'snapshot', 'GET', headers(f, person, token))).json()
+  const mine = await snapshot(viewer, 'b'.repeat(64))
+  assert.deepEqual(
+    mine.notificationProfiles.map(({ id }) => id),
+    ['sender', 'malformed', 'inactive'],
+  )
+  assert.deepEqual(mine.notificationProfiles[0], {
+    id: 'sender',
+    name: 'Sender Name',
+    role: 'Admin',
+    designation: 'Team lead',
+    jobFunctions: ['Design'],
+    active: true,
+    photoDataUrl: photo,
+  })
+  assert.equal(mine.notificationProfiles[1].photoDataUrl, null)
+  assert.equal(mine.notificationProfiles[2].active, false)
+  assert.equal(mine.notificationProfiles[2].photoDataUrl, photo)
+  for (const person of mine.notificationProfiles) {
+    assert.deepEqual(
+      Object.keys(person).sort(),
+      ['id', 'name', 'role', 'designation', 'jobFunctions', 'active', 'photoDataUrl'].sort(),
+    )
+    for (const key of ['email', 'phone', 'bio', 'passwordHash', 'session', 'employeeId', 'employeeidentifier'])
+      assert.equal(key in person, false)
+  }
+  assert.equal(
+    mine.profileGlimpses.some(({ id }) => ['sender', 'unrelated', 'malformed', 'inactive'].includes(id)),
+    false,
+  )
+  assert.equal(
+    mine.employees.some(({ id }) => ['sender', 'unrelated', 'malformed', 'inactive'].includes(id)),
+    false,
+  )
+  assert.deepEqual(
+    (await snapshot(other, 'c'.repeat(64))).notificationProfiles.map(({ id }) => id),
+    ['unrelated'],
+  )
+  assert.deepEqual(
+    (await snapshot(sender, 'd'.repeat(64))).notificationProfiles.map(({ id }) => id),
+    ['inactive'],
+  )
+})
+
 test('photo mutation enforces origin, CSRF, authentication, active account and password-change requirement', async () => {
   const self = user('self', 'Admin'),
     f = fixture([self]),

@@ -144,7 +144,7 @@ export function buildAnalytics(snapshot, filters = {}, now = new Date()) {
         if ((last - first) / 86_400_000 > 366) invalid('Reporting range too large')
         for (let day = first; day <= last; day += 86_400_000) {
           const date = new Date(day).toISOString().slice(0, 10)
-          const at = date === today ? current : `${date}T17:30:00+05:30`
+          const at = date === today ? current : `${date}T19:00:00+05:30`
           const status = dailyUpdateStatus(e.id, updates, absences, at, e).status
           if (status === 'on-time') counts.updateOnTime++
           else if (status === 'late') counts.updateLate++

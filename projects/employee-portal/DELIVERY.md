@@ -1,5 +1,13 @@
 # Employee Portal — Delivery and Setup
 
+## Team identity previews and 19:00 IST workday close
+
+**Team attendance & work** now renders each Admin/Employee name in bold/highlighted styling with the saved profile photo, or safe initials when no photo exists. Inbox sender names are interactive on hover, keyboard focus and click/tap; a signed-in recipient can preview the sender's saved photo and safe work profile only when that sender actually delivered one of the recipient's notifications. Hidden unrelated Admins, private contact fields and message content are not exposed.
+
+Login duration now stops at **19:00 IST**. Task working time is calculated Monday–Saturday in **10:00–13:00 and 14:00–19:00** windows, excluding lunch, Sundays and approved absences. Live attendance fields clear at the 19:00 cutoff; historical report totals retain their saved daily records. Existing profile-sender authorization, notification privacy and session rules are unchanged.
+
+Verification for this combined change: Node 22 `npm test` passed **165 tests**, lint, formatting, `npm run portal:build`, marketing browser checks, portal browser checks and `git diff --check` passed. The SQLite-backed integration suite ran under Node 22; the portal browser suite used isolated local D1 and synthetic accounts. Deployment and the final read-only production verification receipt are recorded in the release line below after publishing.
+
 ## Admin recipients, account recovery and specific workflow alerts
 
 **Notes & broadcasts** now lists active Admins and Employees with role labels. Select names to target them; no selection sends to all active team roles (including the sending Admin). Recipients get their own unread inbox record and optional device alert, while Admin management access to published notes remains unchanged. Disabled accounts are excluded from new deliveries.
@@ -89,11 +97,11 @@ Follow-up release: commit `5fb3007` was pushed to `main` and deployed as Worker 
 
 The owner confirmed that production sign-in/password change works and additional Admin accounts were created after the Cloudflare-native release. The account counts and pending-rotation evidence in the previous release section are historical snapshots, not current account inventory.
 
-Admin logins now persist the same first-login-per-Asia/Kolkata-date records as Employees. Repeated sign-ins do not replace the day's first in-time. Login duration runs from that first login to the earlier of now or 17:30 IST; the live today fields clear at cutoff and day rollover while selected-period totals retain saved history. This is elapsed login time, not active attendance, task working time or a clock-out system. Existing signed-in Admins should sign out and sign back in once to start recording; no earlier Admin in-times were backfilled.
+Admin logins now persist the same first-login-per-Asia/Kolkata-date records as Employees. Repeated sign-ins do not replace the day's first in-time. Login duration runs from that first login to the earlier of now or 19:00 IST; the live today fields clear at cutoff and day rollover while selected-period totals retain saved history. This is elapsed login time, not active attendance, task working time or a clock-out system. Existing signed-in Admins should sign out and sign back in once to start recording; no earlier Admin in-times were backfilled.
 
 Analytics includes Admin and Employee rows with role labels under **Team attendance & work**, and the **Team member** filter supports either role. Matching Admin time contributes to selected report totals; task/client/function filters keep their existing scoping. The Excel **Team** sheet includes a Role column and Admin login metrics. Admins are not counted as missing employee daily updates. Employee access to Admin analytics remains denied. No schema migration, database reset or credentials change is required.
 
-Verification: `npm run quality` passed lint, formatting, **124 tests**, marketing browser checks and portal browser checks. The browser flow selected an Admin in Analytics and downloaded an Admin Excel report. Regression coverage includes first-login persistence/deduplication, Admin summary totals, 17:30 cutoff, day rollover and employee authorization boundaries. Code commit `87d652d` was pushed and deployed as Worker version `104e0952-70f4-4e0c-ad18-8216a0c7a0c4`; read-only deployment checks passed on both production origins. These checks verify deployed build/routing, not a real Admin's newly recorded production in-time; sign out and back in privately to verify that final account-specific result.
+Verification: `npm run quality` passed lint, formatting, **124 tests**, marketing browser checks and portal browser checks. The browser flow selected an Admin in Analytics and downloaded an Admin Excel report. Regression coverage includes first-login persistence/deduplication, Admin summary totals, 19:00 cutoff, day rollover and employee authorization boundaries. Code commit `87d652d` was pushed and deployed as Worker version `104e0952-70f4-4e0c-ad18-8216a0c7a0c4`; read-only deployment checks passed on both production origins. These checks verify deployed build/routing, not a real Admin's newly recorded production in-time; sign out and back in privately to verify that final account-specific result.
 
 ## Current release readiness (9 October 2026)
 
@@ -127,7 +135,7 @@ Release evidence: code commit `2328d6a` pushed to `main`; `npm run deploy` deplo
 - Admin employee/client management, job-function-specific assignment, task review approval/rejection, explicit deadline adjustments.
 - Employee own-task start/completion/reopening, read-only team task summaries, red overdue task surfaces, daily updates and original submission history.
 - Red text-labelled **Update overdue** badges on employee daily updates and Admin team rows; in-place status refresh preserves unsaved update text.
-- Concurrent task working duration: Monday–Saturday 10:00–13:00 and 14:00–17:30 Asia/Kolkata, approved absence subtraction, no lunch/Sunday/overnight counting. Rejection resumes an interval with required feedback. Absence does not automatically extend deadlines.
+- Concurrent task working duration: Monday–Saturday 10:00–13:00 and 14:00–19:00 Asia/Kolkata, approved absence subtraction, no lunch/Sunday/overnight counting. Rejection resumes an interval with required feedback. Absence does not automatically extend deadlines.
 - Full-day/multi-day leave and same-day hourly permission requests; Admin decisions; retrospective approved absence recalculates totals.
 - Shared/individual notes, broadcast inbox, read state, optional Web Push subscriptions and generic lock-screen messages.
 - Admin team/individual labelled charts and metric tables, all-time/month/year/custom date filters, employee/client/function scoping, and real six-sheet Excel workbook download with formula-safe text. Historical tasks, state events, work intervals, daily updates, absences, and login records remain in the D1 business document for reporting.

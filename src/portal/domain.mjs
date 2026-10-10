@@ -24,7 +24,7 @@ export function loginSeconds(record, now = new Date()) {
   if (!record || typeof record.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(record.date)) return 0
   try {
     const start = instant(record.firstLoginAt)
-    const cutoff = dateStart(record.date) + 17.5 * 3_600_000
+    const cutoff = dateStart(record.date) + 19 * 3_600_000
     return Math.max(0, Math.floor((Math.min(instant(now), cutoff) - start) / 1000))
   } catch {
     return 0
@@ -36,7 +36,7 @@ export function currentLoginRecord(records, employeeId, now = new Date()) {
   if (!Array.isArray(records) || typeof employeeId !== 'string') return null
   const current = instant(now)
   const date = businessDate(current)
-  const cutoff = dateStart(date) + 17.5 * 3_600_000
+  const cutoff = dateStart(date) + 19 * 3_600_000
   if (current >= cutoff) return null
   return (
     records.find((record) => {
@@ -97,7 +97,7 @@ function windows(from, to) {
     if (new Date(date + OFFSET).getUTCDay() === 0) continue
     for (const [start, end] of [
       [10, 13],
-      [14, 17.5],
+      [14, 19],
     ]) {
       const left = Math.max(from, date + start * 3_600_000)
       const right = Math.min(to, date + end * 3_600_000)

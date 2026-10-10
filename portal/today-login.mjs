@@ -20,5 +20,5 @@ export function serverOffset(serverNow, receivedAt = Date.now()) {
 
 export function todayLoginExpired(serverNow, now = Date.now()) {
   const server = Date.parse(serverNow)
-  return Number.isFinite(server) && (day(now) !== day(server) || hour(now) >= '17:30')
+  return Number.isFinite(server) && (day(now) !== day(server) || hour(now) >= '19:00')
 }

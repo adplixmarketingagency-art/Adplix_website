@@ -47,11 +47,11 @@ test('photo validation accepts only allowed image types under 5 MiB and exact-si
   assert.equal(imageFormat(Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10])), 'image/png')
 })
 
-test('server-clock offset expires attendance at 17:30 Kolkata and on day rollover', () => {
-  const snapshot = '2026-10-09T11:59:00Z' // 17:29 IST
-  const offset = serverOffset(snapshot, Date.parse('2026-10-09T11:58:55Z'))
+test('server-clock offset expires attendance at 19:00 Kolkata and on day rollover', () => {
+  const snapshot = '2026-10-09T13:00:00Z' // 18:30 IST
+  const offset = serverOffset(snapshot, Date.parse('2026-10-09T12:59:55Z'))
   assert.equal(offset, 5000)
-  assert.equal(todayLoginExpired(snapshot, Date.parse('2026-10-09T11:59:59Z')), false)
-  assert.equal(todayLoginExpired(snapshot, Date.parse('2026-10-09T12:00:00Z')), true)
+  assert.equal(todayLoginExpired(snapshot, Date.parse('2026-10-09T13:29:59Z')), false)
+  assert.equal(todayLoginExpired(snapshot, Date.parse('2026-10-09T13:30:00Z')), true)
   assert.equal(todayLoginExpired(snapshot, Date.parse('2026-10-09T18:30:00Z')), true)
 })

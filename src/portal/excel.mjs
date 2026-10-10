@@ -186,7 +186,7 @@ export function analyticsWorkbook(analytics, snapshot) {
       ],
       [
         'Login duration',
-        'Elapsed time from a team member’s first login of each business date through the earlier of the current time or 17:30 Asia/Kolkata; one first-login record per team member per date.',
+        'Elapsed time from a team member’s first login of each business date through the earlier of the current time or 19:00 Asia/Kolkata; one first-login record per team member per date.',
       ],
       [
         'Current status segments',
@@ -204,7 +204,7 @@ export function analyticsWorkbook(analytics, snapshot) {
         'Daily missing',
         'Working days without an update after the deadline, excluding Sundays, approved full-day leave and dates outside employment. Pending today is not missing.',
       ],
-      ['Timezone', 'Asia/Kolkata; Monday–Saturday 10:00–13:00 and 14:00–17:30.'],
+      ['Timezone', 'Asia/Kolkata; Monday–Saturday 10:00–13:00 and 14:00–19:00.'],
     ],
   ]
   const files = {

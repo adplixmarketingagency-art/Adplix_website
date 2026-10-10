@@ -62,13 +62,13 @@ function assignmentSlots(types) {
   }
 }
 
-export function employeeChart(rows, renderName = (person) => esc(person.name)) {
+export function employeeChart(rows, renderName = (person) => esc(person.name), renderAvatar = () => '') {
   const sorted = [...rows].sort(
     (a, b) =>
       currentTypes(b).reduce((sum, type) => sum + type.total, 0) -
       currentTypes(a).reduce((sum, type) => sum + type.total, 0),
   )
-  return `${legend('Team current status legend', true)}<p class="chart-note">Each task completion fills one slot in its task-type colour. Approved tasks stay filled; reopened tasks return to dotted. Login duration is shown for every team member and capped at 17:30 IST.</p><div class="employee-chart" role="list" aria-label="Current task status and attendance by team member">${sorted
+  return `${legend('Team current status legend', true)}<p class="chart-note">Each task completion fills one slot in its task-type colour. Approved tasks stay filled; reopened tasks return to dotted. Login duration is shown for every team member and capped at 19:00 IST; working time follows the same business-day close.</p><div class="employee-chart" role="list" aria-label="Current task status and attendance by team member">${sorted
     .map((e) => {
       const types = currentTypes(e),
         total = types.reduce((sum, type) => sum + type.total, 0),
@@ -83,10 +83,10 @@ export function employeeChart(rows, renderName = (person) => esc(person.name)) {
       const loginSeconds = today ? e.todayLoginSeconds : e.loginSeconds
       const role = e.role === 'Admin' ? 'Admin' : 'Employee'
       return `<div class="employee-row" role="listitem" aria-label="${esc(e.name)}, ${role}">
-      <div class="employee-label"><span>${renderName(e)} <small class="team-member-role">${role}</small></span><strong>${done} of ${total} completed (${total ? Math.round((done / total) * 100) : 0}%)</strong></div>
+      <div class="employee-label">${renderAvatar(e)}<span>${renderName(e)} <small class="team-member-role">${role}</small></span><strong>${done} of ${total} completed (${total ? Math.round((done / total) * 100) : 0}%)</strong></div>
        <div class="assignment-track${slots.grouped ? ' assignment-track--grouped' : ''}" role="group" aria-label="${esc(e.name)}: ${done} completed of ${total}; Assigned ${n(e.assigned)}, In-progress ${n(e.inProgress)}, Completed ${n(e.completed)}, Approved ${n(e.approved)}${counts ? `; ${counts}` : ''}">${total ? slots.html : '<span class="assignment-empty">No tasks assigned</span>'}</div>
       ${total ? `<ul class="assignment-type-counts" aria-label="${esc(e.name)} task-type progress">${types.map((type) => `<li class="${colorClass(type.key)}">${type.label} <strong>${type.done}/${type.total}</strong> complete</li>`).join('')}</ul>` : ''}
-        <div class="employee-attendance"><span>Assigned ${n(e.assigned)} · In-progress ${n(e.inProgress)} · Completed ${n(e.completed)} · Approved ${n(e.approved)}</span><span${today ? ` data-today-login="${esc(e.id)}"` : ''}>${loginLabel} <strong>${esc(loginClock(loginAt))}</strong></span><span>${n(e.loginDays)} login days in selected period</span><span${today ? ` data-today-duration="${esc(e.id)}"` : ''}>${duration(Math.min(n(loginSeconds), 17.5 * 3600))} logged${today ? ' today' : ' · selected period (historical fallback)'} · capped 17:30</span><small>Active work ${n(e.activeWork)} · Active rework ${n(e.activeRework)} · Historical iterations ${n(e.workCount)} / rework ${n(e.reworkCount)}</small></div>
+         <div class="employee-attendance"><span>Assigned ${n(e.assigned)} · In-progress ${n(e.inProgress)} · Completed ${n(e.completed)} · Approved ${n(e.approved)}</span><span${today ? ` data-today-login="${esc(e.id)}"` : ''}>${loginLabel} <strong>${esc(loginClock(loginAt))}</strong></span><span>${n(e.loginDays)} login days in selected period</span><span${today ? ` data-today-duration="${esc(e.id)}"` : ''}>${duration(Math.min(n(loginSeconds), 19 * 3600))} logged${today ? ' today' : ' · selected period (historical fallback)'} · capped 19:00</span><small>Active work ${n(e.activeWork)} · Active rework ${n(e.activeRework)} · Historical iterations ${n(e.workCount)} / rework ${n(e.reworkCount)}</small></div>
     </div>`
     })
     .join('')}</div>`
