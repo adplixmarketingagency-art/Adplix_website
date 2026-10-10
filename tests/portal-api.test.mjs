@@ -212,6 +212,81 @@ test('team task summary uses real duration without disclosing description, event
   for (const privateField of ['description', 'intervals', 'events']) assert.equal(privateField in data.tasks[0], false)
   assert.equal(data.employees[1].email, undefined)
 })
+test('recipient snapshots pick up notes and broadcasts without push, expose only safe sender data, and retain read state', async () => {
+  const admin = {
+    id: 'admin',
+    role: 'Admin',
+    name: 'Team Admin',
+    email: 'private-admin@example.test',
+    passwordHash: 'private-hash',
+    active: true,
+    credentialVersion: 0,
+  }
+  const employee = { id: 'employee', role: 'Employee', name: 'Recipient', active: true, credentialVersion: 0 }
+  const other = { id: 'other', role: 'Employee', name: 'Other', active: true, credentialVersion: 0 }
+  const f = fixture([admin, employee, other])
+  const adminHeaders = asUser(f, admin)
+  const employeeHeaders = asUser(f, employee, 'b'.repeat(64))
+  const otherHeaders = asUser(f, other, 'c'.repeat(64))
+  const snapshot = async (headers) => (await callWith(f, 'snapshot', 'GET', headers)).json()
+  const send = (payload) => callWith(f, 'actions', 'POST', adminHeaders, payload)
+  assert.deepEqual((await snapshot(employeeHeaders)).notifications, [])
+
+  assert.equal((await send({ type: 'note.create', text: 'Private note', recipientIds: ['employee'] })).status, 200)
+  assert.equal(
+    (await send({ type: 'broadcast.create', title: 'News', text: 'Hello team', recipientIds: [] })).status,
+    200,
+  )
+  const mine = await snapshot(employeeHeaders)
+  const colleague = await snapshot(otherHeaders)
+  assert.deepEqual(
+    mine.notifications.map((n) => n.title),
+    ['New note', 'News'],
+  )
+  assert.deepEqual(
+    colleague.notifications.map((n) => n.title),
+    ['News'],
+  )
+  assert.equal(mine.notes[0].text, 'Private note')
+  assert.deepEqual(mine.notes[0].author, { id: 'admin', name: 'Team Admin', role: 'Admin' })
+  assert.equal(JSON.stringify(mine.notes).includes('private-admin@example.test'), false)
+  assert.equal(
+    mine.profileGlimpses.some((person) => person.id === 'admin'),
+    false,
+  )
+  assert.deepEqual(colleague.notes, [])
+  assert.deepEqual(mine.notifications[0].sender, { id: 'admin', name: 'Team Admin', role: 'Admin' })
+  assert.equal(mine.notifications[0].readAt, null)
+  assert.equal(JSON.stringify(mine.notifications).includes('private-admin@example.test'), false)
+  assert.equal(JSON.stringify(mine.notifications).includes('private-hash'), false)
+
+  const notificationId = mine.notifications[0].id
+  assert.equal(
+    (await callWith(f, 'actions', 'POST', otherHeaders, { type: 'notification.read', id: notificationId })).status,
+    404,
+  )
+  assert.equal(
+    (await callWith(f, 'actions', 'POST', employeeHeaders, { type: 'notification.read', id: notificationId })).status,
+    200,
+  )
+  const readAt = (await snapshot(employeeHeaders)).notifications[0].readAt
+  assert.ok(readAt)
+  assert.equal(
+    (await callWith(f, 'actions', 'POST', employeeHeaders, { type: 'notification.read', id: notificationId })).status,
+    200,
+  )
+  assert.equal((await snapshot(employeeHeaders)).notifications[0].readAt, readAt)
+  assert.equal((await snapshot(otherHeaders)).notifications[0].readAt, null)
+
+  // Older state can carry extra fields; snapshots must never serialize them to recipients.
+  f.state.notifications[0].passwordHash = 'legacy-secret'
+  assert.equal(JSON.stringify((await snapshot(employeeHeaders)).notifications).includes('legacy-secret'), false)
+  f.state.notes[0].passwordHash = 'legacy-note-secret'
+  f.state.notifications = []
+  const legacy = await snapshot(employeeHeaders)
+  assert.deepEqual(legacy.notes[0].author, { id: 'admin', name: 'Team Admin', role: 'Admin' })
+  assert.equal(JSON.stringify(legacy.notes).includes('legacy-note-secret'), false)
+})
 test('push mutation refuses forced-password-change sessions, without storing a subscription', async () => {
   const employee = {
     id: 'emp',

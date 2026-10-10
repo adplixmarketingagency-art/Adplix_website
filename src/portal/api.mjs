@@ -249,8 +249,33 @@ const snapshot = (state, user, now = new Date()) => {
     }),
     updates: state.updates.filter((x) => isAdmin || x.employeeId === user.id),
     absences: state.absences.filter((x) => isAdmin || x.employeeId === user.id),
-    notes: state.notes.filter((x) => isAdmin || !x.recipientIds.length || x.recipientIds.includes(user.id)),
-    notifications: (state.notifications || []).filter((x) => x.employeeId === user.id),
+    notes: state.notes
+      .filter((x) => isAdmin || !x.recipientIds.length || x.recipientIds.includes(user.id))
+      .map(({ id, text, recipientIds, authorId, createdAt }) => {
+        const author = state.users.find((u) => u.id === authorId)
+        return {
+          id,
+          text,
+          recipientIds,
+          authorId,
+          createdAt,
+          author: author ? { id: author.id, name: author.name, role: author.role } : null,
+        }
+      }),
+    notifications: (state.notifications || [])
+      .filter((x) => x.employeeId === user.id)
+      .map(({ id, title, text, createdAt, readAt, senderId, taskId, transitionVersion }) => {
+        const sender = senderId && state.users.find((u) => u.id === senderId)
+        return {
+          id,
+          title,
+          text,
+          createdAt,
+          readAt,
+          ...(taskId ? { taskId, transitionVersion } : {}),
+          sender: sender ? { id: sender.id, name: sender.name, role: sender.role } : null,
+        }
+      }),
     serverNow: now.toISOString(),
     today: businessDate(now),
     updateStatus: dailyUpdateStatus(user.id, state.updates, state.absences, now, user),
@@ -729,7 +754,7 @@ async function action(db, actorId, credentialVersion, a, env) {
         for (const e of s.users.filter(
           (x) => x.active && x.role === 'Employee' && (!rids.length || rids.includes(x.id)),
         ))
-          notify(s, e.id, 'New note', text)
+          notify(s, e.id, 'New note', text, { senderId: actor.id })
         push = pushForEmployees(s, rids)
         break
       }
@@ -752,7 +777,7 @@ async function action(db, actorId, credentialVersion, a, env) {
           for (const u of s.users.filter(
             (x) => x.active && x.role === 'Employee' && (!ids.length || ids.includes(x.id)),
           ))
-            notify(s, u.id, title, text)
+            notify(s, u.id, title, text, { senderId: actor.id })
           push = pushForEmployees(s, ids)
         }
         break

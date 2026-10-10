@@ -1,5 +1,15 @@
 # Employee Portal — Delivery and Setup
 
+## Live inbox, sender attribution and unread count
+
+Visible signed-in portals now poll every 15 seconds, with an immediate check on focus/visibility return and a service-worker push signal. The inbox list, sidebar unread badge and visible notes update without reloading or replacing draft forms. Poll requests do not overlap and stale responses after a newer snapshot/session change are discarded. Busy writes or an open editing modal defer polling until the next check.
+
+New unread arrivals show a nonmodal in-app pop-up with **Open inbox** and **Dismiss**. It does not request browser notification permission or steal focus; it expires after 10 seconds unless a control has keyboard focus. Existing unread history on sign-in/reload is counted but not repeatedly announced. Dismissing a pop-up does not mark messages read. **Mark as read** updates the persistent inbox state and count; each new note has one inbox alert, avoiding double-counting.
+
+Notes and new broadcasts show the sender's name and role using explicit safe summary fields. Legacy notes resolve their saved author IDs, without exposing hidden Admin profiles, email, phone or passwords. Legacy broadcasts without a sender ID cannot be reliably attributed. Optional browser push remains generic on the lock screen and opens the Inbox; actual closed-tab delivery still requires permission and browser/device support.
+
+Verification: `npm run quality` passed lint, formatting, **143 tests**, marketing browser checks and the portal browser suite against isolated local D1. The browser flow verified a note arriving on the regular timer without reload/focus, new-message pop-ups, sender display, badge increments and mark-as-read decrements. Unit/API checks cover initial-history suppression, announcement deduplication, ownership/read persistence, legacy note attribution and sender-field privacy; service-worker checks cover generic notifications and update signals to portal windows only. `npm run deploy:preview` and `git diff --check` passed. The local Graphify AST graph was updated; CSS/service-worker coverage is supplemented by source and explicit tests. No production account, note or broadcast was created by these checks.
+
 ## Profile glimpses and gesture photo editing
 
 Authorized team names in task cards, team lists, daily updates, time-off requests, Analytics, visible note authors and the signed-in identity open a compact profile glimpse on hover, keyboard focus or click/tap. The card shows the saved photo (or initials), name, role, designation and work types. Clicking the card's photo opens a larger uncropped view of the saved image. Escape/close restores focus; popups close on navigation/auth changes. Native select options and input values remain plain text.

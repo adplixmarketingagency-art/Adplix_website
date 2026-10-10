@@ -33,7 +33,10 @@ let worker,
 const errors = []
 const screenshots = resolve('.portal-local/previews')
 async function navigate(page, name) {
-  await page.getByRole('navigation', { name: 'Workspace' }).getByRole('link', { name, exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Workspace' })
+    .getByRole('link', { name: name === 'Inbox' ? /^Inbox(?: \d+ unread notifications?)?$/ : name, exact: true })
+    .click()
 }
 async function submit(form, name) {
   await form.getByRole('button', { name, exact: true }).click()
@@ -345,6 +348,9 @@ try {
   await note.getByLabel('Test Editor', { exact: true }).check()
   await submit(note, 'Publish note')
   await saved(adminPage)
+  await expect(adminPage.locator('section.panel').filter({ hasText: 'Published notes' })).toContainText(
+    'From Test Admin · Admin',
+  )
   const broadcast = adminPage.locator('[data-form="broadcast"]')
   await broadcast.getByLabel('Title', { exact: true }).fill('Production update')
   await broadcast.getByLabel('Message', { exact: true }).fill('Check your assignment before starting work.')
@@ -358,6 +364,59 @@ try {
   await expect(employeePage.getByRole('link', { name: 'Team', exact: true })).toHaveCount(0)
   await expect(employeePage.locator('.task-card.overdue')).toHaveCount(3)
   assert.equal(await employeePage.locator('.list-item img').count(), 0, 'Untrusted note HTML must stay text')
+  await expect(employeePage.locator('.list-item').filter({ hasText: 'Review the brand brief.' })).toContainText(
+    'From Test Admin · Admin',
+  )
+  const inboxLink = employeePage.getByRole('navigation', { name: 'Workspace' }).locator('a[href="#notifications"]')
+  const initialUnread = Number(await inboxLink.locator('.inbox-count').textContent())
+  assert.ok(initialUnread >= 2)
+  await expect(inboxLink).toHaveAccessibleName(`Inbox ${initialUnread} unread notifications`)
+  await navigate(employeePage, 'Inbox')
+  const inbox = employeePage.locator('#inbox-items')
+  await expect(inbox).toBeVisible()
+  await expect(inbox.locator('[data-notification-id]').filter({ hasText: 'New note' })).toContainText(
+    'From Test Admin · Admin',
+  )
+  await expect(inbox.locator('[data-notification-id]').filter({ hasText: 'Production update' })).toContainText(
+    'From Test Admin · Admin',
+  )
+  await expect(inbox).not.toContainText('admin@example.test')
+  const existingItems = await inbox.locator('[data-notification-id]').count()
+  await navigate(adminPage, 'Notes & broadcasts')
+  const liveNote = adminPage.locator('[data-form="note"]')
+  await liveNote.getByLabel('Note', { exact: true }).fill('A note received while the inbox is open')
+  await liveNote.getByLabel('Test Editor', { exact: true }).check()
+  await submit(liveNote, 'Publish note')
+  await saved(adminPage)
+  // The ordinary periodic poll updates an already-open page without reload or focus.
+  await expect(inbox.locator('[data-notification-id]')).toHaveCount(existingItems + 1, { timeout: 22_000 })
+  await expect(inbox).toContainText('A note received while the inbox is open')
+  const popup = employeePage.locator('#inbox-popup')
+  await expect(popup).toBeVisible()
+  await expect(popup).toContainText('From Test Admin · Admin')
+  await popup.getByRole('button', { name: 'Dismiss' }).click()
+  await expect(popup).toHaveCount(0)
+  await employeePage.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(popup).toHaveCount(0)
+  await expect(inboxLink.locator('.inbox-count')).toHaveText(String(initialUnread + 1))
+  const liveBroadcast = adminPage.locator('[data-form="broadcast"]')
+  await liveBroadcast.getByLabel('Title', { exact: true }).fill('Live announcement')
+  await liveBroadcast.getByLabel('Message', { exact: true }).fill('Delivered by snapshot polling')
+  await submit(liveBroadcast, 'Send to inbox')
+  await saved(adminPage)
+  await employeePage.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(inbox.locator('[data-notification-id]')).toHaveCount(existingItems + 2)
+  await expect(popup).toContainText('Live announcement')
+  await popup.getByRole('button', { name: 'Open inbox' }).click()
+  await expect(popup).toHaveCount(0)
+  await expect(inboxLink.locator('.inbox-count')).toHaveText(String(initialUnread + 2))
+  const newItem = inbox.locator('[data-notification-id]').filter({ hasText: 'Live announcement' })
+  await expect(newItem).toHaveClass(/unread/)
+  await newItem.getByRole('button', { name: 'Mark as read' }).click()
+  await expect(newItem).not.toHaveClass(/unread/)
+  await expect(inboxLink.locator('.inbox-count')).toHaveText(String(initialUnread + 1))
+  await expect(inboxLink).toHaveAccessibleName(`Inbox ${initialUnread + 1} unread notifications`)
+  await navigate(employeePage, 'Overview')
   await accessibility(employeePage, 'employee overview')
   await verifyProfilePhoto(employeePage, screenshots, 'employee')
   const daily = employeePage.locator('#daily-status .tag')

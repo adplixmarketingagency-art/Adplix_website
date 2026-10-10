@@ -16,6 +16,7 @@ import { preparePhoto, PROFILE_PHOTO_SIZE, savedPhotoFile } from './photo.mjs'
 import { cropPhoto } from './photo-crop-dialog.mjs'
 import { serverOffset, todayLoginExpired } from './today-login.mjs'
 import { profileName, installProfileGlimpses } from './profile-glimpse.mjs'
+import { createInboxTracker } from './inbox.mjs'
 
 const root = document.querySelector('#app')
 const API = '/api/portal'
@@ -42,15 +43,29 @@ const state = {
   push: null,
   message: '',
   error: '',
+  notificationPopup: null,
 }
 let photoCropController = null
+let snapshotPolling = false
+let inboxPopupTimer = null
+const inboxTracker = createInboxTracker()
 const esc = (value) =>
   String(value ?? '').replace(
     /[&<>"']/g,
     (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char],
   )
 const arr = (value) => (Array.isArray(value) ? value : [])
+const unreadCount = (notifications) => arr(notifications).filter((item) => !item.readAt).length
+const senderIdentity = (sender) => {
+  if (!sender || typeof sender.name !== 'string' || !sender.name.trim()) return ''
+  const role = sender.role === 'Admin' || sender.role === 'Employee' ? ` · ${esc(sender.role)}` : ''
+  return `From ${esc(sender.name)}${role}`
+}
 const profileFor = (id) => arr(state.snapshot?.profileGlimpses).find((person) => String(person.id) === String(id))
+const noteAuthor = (note) =>
+  note.author ||
+  profileFor(note.authorId) ||
+  arr(state.snapshot?.notifications).find((item) => String(item.sender?.id) === String(note.authorId))?.sender
 const personName = (person, fallback = '') => {
   const visible = person && profileFor(person.id)
   return visible ? profileName(visible.id, visible.name) : esc(fallback)
@@ -83,10 +98,6 @@ const kolkataInput = (value) =>
         .format(new Date(value))
         .replace(' ', 'T')
     : ''
-const date = (value) =>
-  value
-    ? new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeZone: 'Asia/Kolkata' }).format(new Date(value))
-    : '—'
 const duration = (value) =>
   `${Math.floor((Number(value) || 0) / 3600)}h ${Math.floor(((Number(value) || 0) % 3600) / 60)}m`
 const serviceTypeLabel = (value) =>
@@ -218,6 +229,7 @@ async function load() {
     csrf = state.csrf
   const snapshot = await json('/snapshot')
   if (state.user?.id !== user || state.csrf !== csrf) return false
+  announceInbox(snapshot.notifications)
   state.snapshot = snapshot
   state.user = snapshot.user
   state.serverOffset = serverOffset(snapshot.serverNow)
@@ -249,6 +261,9 @@ function scene() {
 }
 
 function login() {
+  clearTimeout(inboxPopupTimer)
+  inboxTracker.reset()
+  state.notificationPopup = null
   glimpses.close()
   root.innerHTML = `<main class="auth"><div class="auth-card">${portalBrand()}<p class="eyebrow">Private workspace</p><h1>Welcome back.</h1><p class="muted">Sign in with your approved email address.</p><div id="feedback" class="feedback ${state.error ? 'error' : ''}" role="alert" tabindex="-1">${esc(state.error)}</div><form data-form="login">${input('email', 'Email address', 'email', '', 'required autocomplete="username"')}${input('password', 'Portal password', 'password', '', 'required autocomplete="current-password"')}<button class="show-pass" type="button" data-action="show-password" aria-label="Show password" aria-pressed="false">Show password</button><button class="primary full" type="submit">Sign in</button></form><button class="text-button" type="button" data-action="register">Register / request access</button><p class="fine">New accounts require administrator approval before sign-in.</p></div></main>`
 }
@@ -268,6 +283,7 @@ function changePassword() {
   root.innerHTML = `<main class="auth"><div class="auth-card">${portalBrand()}<p class="eyebrow">Account security</p><h1>Set a new password</h1><p class="muted">Your temporary password must be changed before opening the workspace. Current password means the temporary password you used to sign in.</p><div id="feedback" class="feedback" role="alert" tabindex="-1"></div><form data-form="password">${input('currentPassword', 'Current password', 'password', '', 'required autocomplete="current-password"')}${input('newPassword', 'New password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button class="primary full" type="submit">Update password</button></form><button class="text-button" type="button" data-action="logout">Sign out</button></div></main>`
 }
 function navigation() {
+  const unread = unreadCount(state.snapshot?.notifications)
   const nav = [
     ['dashboard', 'Overview'],
     ['tasks', 'My tasks'],
@@ -287,7 +303,45 @@ function navigation() {
         ]
       : []),
   ]
-  return `<aside class="sidebar ${state.drawer ? 'open' : ''}" id="sidebar" aria-label="Workspace menu"><div class="side-brand">${portalBrand('sidebar')}<button class="side-close" type="button" data-action="drawer" aria-label="Close menu">${svgIcon('close')}</button></div><nav aria-label="Workspace">${nav.map(([key, title]) => `<a href="#${key}" class="${state.view === key ? 'active' : ''}" ${state.view === key ? 'aria-current="page"' : ''}>${title}</a>`).join('')}</nav><div class="side-foot"><span>${personName(state.user, state.user.name)}</span><small>${esc(state.user.role)}</small>${btn('Sign out', 'logout', '', 'quiet')}</div></aside>`
+  return `<aside class="sidebar ${state.drawer ? 'open' : ''}" id="sidebar" aria-label="Workspace menu"><div class="side-brand">${portalBrand('sidebar')}<button class="side-close" type="button" data-action="drawer" aria-label="Close menu">${svgIcon('close')}</button></div><nav aria-label="Workspace">${nav.map(([key, title]) => `<a href="#${key}" class="${state.view === key ? 'active' : ''}" ${state.view === key ? 'aria-current="page"' : ''}>${title}${key === 'notifications' ? `<span class="inbox-count" ${unread ? '' : 'hidden'} aria-hidden="true">${unread}</span><span class="sr-only inbox-count-label">${unread ? `${unread} unread notification${unread === 1 ? '' : 's'}` : ''}</span>` : ''}</a>`).join('')}</nav><div class="side-foot"><span>${personName(state.user, state.user.name)}</span><small>${esc(state.user.role)}</small>${btn('Sign out', 'logout', '', 'quiet')}</div></aside>`
+}
+function syncInboxCount(notifications) {
+  const link = document.querySelector('#sidebar nav a[href="#notifications"]')
+  if (!link) return
+  const count = unreadCount(notifications)
+  const badge = link.querySelector('.inbox-count')
+  badge.hidden = !count
+  badge.textContent = String(count)
+  link.querySelector('.inbox-count-label').textContent = count
+    ? `${count} unread notification${count === 1 ? '' : 's'}`
+    : ''
+}
+function announceInbox(notifications) {
+  const arrivals = inboxTracker.observe(notifications)
+  if (!arrivals.length) return
+  state.notificationPopup = arrivals
+  renderInboxPopup()
+  clearTimeout(inboxPopupTimer)
+  inboxPopupTimer = setTimeout(expireInboxPopup, 10_000)
+}
+function expireInboxPopup() {
+  if (document.querySelector('#inbox-popup')?.contains(document.activeElement)) {
+    inboxPopupTimer = setTimeout(expireInboxPopup, 10_000)
+    return
+  }
+  state.notificationPopup = null
+  renderInboxPopup()
+}
+function renderInboxPopup() {
+  document.querySelector('#inbox-popup')?.remove()
+  const items = state.notificationPopup
+  if (!items?.length || !state.user || !document.querySelector('.layout')) return
+  const newest = items.at(-1)
+  const title = items.length > 1 ? `${items.length} new inbox messages` : newest.title
+  root.insertAdjacentHTML(
+    'beforeend',
+    `<aside id="inbox-popup" class="inbox-popup" aria-label="New inbox message"><div role="status" aria-live="polite" aria-atomic="true"><strong>${esc(title)}</strong><p>${esc(items.length > 1 ? 'New notes or notifications are waiting in your inbox.' : senderIdentity(newest.sender) || 'New workspace notification')}</p></div><div class="actions">${btn('Open inbox', 'inbox-open', '', 'small primary')}${btn('Dismiss', 'inbox-dismiss', '', 'small')}</div></aside>`,
+  )
 }
 function shell() {
   const previousNav = document.querySelector('#sidebar nav')
@@ -311,6 +365,7 @@ function shell() {
   content = (views[state.view] || dashboard)()
   root.innerHTML = `<a class="skip-link" href="#main">Skip to content</a><div class="layout">${navigation()}<div class="scrim ${state.drawer ? 'visible' : ''}" data-action="drawer"></div><div class="work"><header class="topbar"><button type="button" class="menu" data-action="drawer" aria-controls="sidebar" aria-label="Open menu" aria-expanded="${state.drawer}">${svgIcon('menu')}</button><div class="topbar-context"><span class="eyebrow">Adplix Media / ${esc(state.view.replaceAll('-', ' '))}</span><p>${esc(state.snapshot?.today || '')}</p></div><div class="identity">${photoAvatar(state.user, 'identity-avatar')}<div class="identity-copy"><strong>${personName(state.user, state.user.name)}</strong><div class="identity-meta"><span>${esc(state.user.role)}</span><span>${esc(state.user.designation || 'Unassigned')}</span></div></div></div>${btn('Refresh', 'refresh', '', 'refresh-control')}</header><main id="main" class="content" tabindex="-1"><div id="feedback" class="feedback ${state.error ? 'error' : state.message ? 'success' : ''}" role="alert" tabindex="-1">${esc(state.error || state.message)}</div>${content}</main></div></div><dialog id="modal" aria-labelledby="modal-title"><div id="modal-body"></div><button class="dialog-close" type="button" data-action="close-modal" aria-label="Close dialog">${svgIcon('close')}</button></dialog>`
   glimpses.sync()
+  renderInboxPopup()
   syncDailyStatuses(state.snapshot)
   const sidebar = document.querySelector('#sidebar')
   sidebar.querySelector('nav').scrollTop = state.navScrollTop
@@ -399,16 +454,7 @@ function dashboard() {
             })
             .join('') || empty('No active employees.'),
         )
-  }${section(
-    'Notes',
-    arr(s.notes)
-      .slice(0, 5)
-      .map((n) => {
-        const author = profileFor(n.authorId)
-        return `<div class="list-item"><p>${esc(n.text)}</p><small>${author ? `${personName(author)} · ` : ''}${date(n.createdAt)}</small></div>`
-      })
-      .join('') || empty('No notes yet.'),
-  )}</div></div>`
+  }${section('Notes', `<div id="notes-items">${noteItems(s.notes, false)}</div>`)}</div></div>`
 }
 function targetProgress() {
   const month = state.snapshot.today.slice(0, 7),
@@ -446,7 +492,40 @@ function requests() {
 }
 function notifications() {
   const list = arr(state.snapshot.notifications)
-  return `<div class="page-heading"><div><p class="eyebrow">Messages</p><h1>Inbox</h1></div></div>${section('Notifications', list.map((n) => `<div class="list-item ${n.readAt ? '' : 'unread'}"><div class="split"><strong>${esc(n.title)}</strong><small>${fmtDateTime(n.createdAt)}</small></div><p>${esc(n.text)}</p>${!n.readAt ? btn('Mark as read', 'notification-read', n.id, 'small') : ''}</div>`).join('') || empty('Your inbox is clear.'))}${section('Browser notifications', `<p class="muted">The inbox works even if browser notifications are unavailable or denied. Delivery to a closed tab depends on browser and device support.</p><p id="push-status" role="status">${esc(state.push?.message || 'Checking browser support…')}</p>${btn('Enable notifications', 'push-enable', '', 'primary')}${state.push?.enabled ? btn('Disable notifications', 'push-disable') : ''}`)}`
+  return `<div class="page-heading"><div><p class="eyebrow">Messages</p><h1>Inbox</h1></div></div>${section('Notifications', `<div id="inbox-items" aria-live="polite">${list.map(notificationItem).join('') || empty('Your inbox is clear.')}</div>`)}${section('Browser notifications', `<p class="muted">The inbox works even if browser notifications are unavailable or denied. Delivery to a closed tab depends on browser and device support.</p><p id="push-status" role="status">${esc(state.push?.message || 'Checking browser support…')}</p>${btn('Enable notifications', 'push-enable', '', 'primary')}${state.push?.enabled ? btn('Disable notifications', 'push-disable') : ''}`)}`
+}
+function notificationItem(n) {
+  return `<div class="list-item ${n.readAt ? '' : 'unread'}" data-notification-id="${esc(n.id)}" data-read-at="${esc(n.readAt || '')}"><div class="split"><strong>${esc(n.title)}</strong><small>${fmtDateTime(n.createdAt)}</small></div>${senderIdentity(n.sender) ? `<small class="sender-identity">${senderIdentity(n.sender)}</small>` : ''}<p>${esc(n.text)}</p>${!n.readAt ? btn('Mark as read', 'notification-read', n.id, 'small') : ''}</div>`
+}
+function syncInbox(notifications) {
+  syncInboxCount(notifications)
+  if (state.view !== 'notifications') return
+  const container = document.querySelector('#inbox-items')
+  if (!container) return
+  const list = arr(notifications)
+  const existing = new Map(
+    [...container.querySelectorAll('[data-notification-id]')].map((node) => [node.dataset.notificationId, node]),
+  )
+  const keep = new Set(list.map((item) => String(item.id)))
+  for (const [id, node] of existing) if (!keep.has(id)) node.remove()
+  const emptyNode = container.querySelector('.empty')
+  if (list.length) emptyNode?.remove()
+  for (let index = list.length - 1; index >= 0; index--) {
+    const item = list[index]
+    const id = String(item.id)
+    let node = existing.get(id)
+    if (!node || (node.dataset.readAt !== (item.readAt || '') && !node.contains(document.activeElement))) {
+      const template = document.createElement('template')
+      template.innerHTML = notificationItem(item)
+      const updated = template.content.firstElementChild
+      if (node) node.replaceWith(updated)
+      node = updated
+    }
+    const next = index + 1 < list.length ? existing.get(String(list[index + 1].id)) : null
+    if (node.parentElement !== container || node.nextSibling !== next) container.insertBefore(node, next)
+    existing.set(id, node)
+  }
+  if (!list.length && !emptyNode) container.insertAdjacentHTML('beforeend', empty('Your inbox is clear.'))
 }
 function calendar() {
   const events = arr(state.snapshot.calendarEvents)
@@ -659,13 +738,25 @@ function notes() {
   const recipientFields = `<fieldset><legend>Recipients</legend><p class="muted">Leave unselected to send to everyone.</p><div class="check-grid">${recipients.map((e) => `<label class="check"><input type="checkbox" name="recipientIds" value="${esc(e.id)}"><span>${esc(e.name)}</span></label>`).join('')}</div></fieldset>`
   return `<div class="page-heading"><div><p class="eyebrow">Communication</p><h1>Notes & broadcasts</h1></div></div><div class="grid"><div>${section('Post a note', `<form data-form="note">${area('text', 'Note', '', 'required rows="4"')}${recipientFields}<button class="primary" type="submit">Publish note</button></form>`)}</div><div>${section('Send announcement', `<form data-form="broadcast">${input('title', 'Title', 'text', '', 'required')}${area('text', 'Message', '', 'required rows="4"')}${recipientFields}<button class="primary" type="submit">Send to inbox</button></form><p class="fine">Browser push is optional; every announcement stays in the inbox.</p>`)}</div></div>${section(
     'Published notes',
-    arr(state.snapshot.notes)
-      .map(
-        (n) =>
-          `<div class="list-item"><p>${esc(n.text)}</p><small>${profileFor(n.authorId) ? `${personName(profileFor(n.authorId))} · ` : ''}${fmtDateTime(n.createdAt)} · ${n.recipientIds?.length ? `${n.recipientIds.length} selected` : 'Everyone'}</small><div class="actions">${btn('Delete note', 'note-delete', n.id, 'small danger')}</div></div>`,
-      )
-      .join('') || empty('No notes yet.'),
+    `<div id="notes-items">${noteItems(state.snapshot.notes, true)}</div>`,
   )}`
+}
+function noteItems(notes, management) {
+  const list = management ? arr(notes) : arr(notes).slice(-5).reverse()
+  return (
+    list
+      .map((n) => {
+        const author = senderIdentity(noteAuthor(n)) || 'Sender unavailable'
+        return `<div class="list-item"><p>${esc(n.text)}</p><small>${author} · ${fmtDateTime(n.createdAt)}${management ? ` · ${n.recipientIds?.length ? `${n.recipientIds.length} selected` : 'Everyone'}` : ''}</small>${management ? `<div class="actions">${btn('Delete note', 'note-delete', n.id, 'small danger')}</div>` : ''}</div>`
+      })
+      .join('') || empty('No notes yet.')
+  )
+}
+function syncNotes(notes) {
+  const container = document.querySelector('#notes-items')
+  if (!container || container.contains(document.activeElement)) return
+  const markup = noteItems(notes, state.view === 'notes')
+  if (container.innerHTML !== markup) container.innerHTML = markup
 }
 function normalizeAnalytics(data) {
   return {
@@ -887,20 +978,23 @@ function syncDailyStatuses(snapshot) {
 }
 async function pollSnapshot() {
   if (
+    snapshotPolling ||
     !state.user ||
     !state.snapshot ||
     state.user.mustChangePassword ||
     state.busy ||
-    state.drawer ||
     document.hidden ||
     document.querySelector('#modal:open')
   )
     return
   const user = state.user.id,
-    csrf = state.csrf
+    csrf = state.csrf,
+    previousSnapshot = state.snapshot
+  snapshotPolling = true
   try {
     const snapshot = await json('/snapshot')
-    if (state.user?.id !== user || state.csrf !== csrf) return
+    if (state.user?.id !== user || state.csrf !== csrf || state.snapshot !== previousSnapshot) return
+    announceInbox(snapshot.notifications)
     const previousDay = state.snapshot.today
     state.snapshot = snapshot
     state.user = snapshot.user
@@ -939,6 +1033,8 @@ async function pollSnapshot() {
       }
     })
     syncTaskOrder(snapshot)
+    syncInbox(snapshot.notifications)
+    syncNotes(snapshot.notes)
     glimpses.sync()
     syncDailyStatuses(snapshot)
     syncTodayAttendance()
@@ -946,6 +1042,8 @@ async function pollSnapshot() {
       loadAnalytics({ liveOnly: true })
   } catch (err) {
     if (err.sessionExpired) return /* Keep existing values until explicit refresh. */
+  } finally {
+    snapshotPolling = false
   }
 }
 function syncTaskOrder(snapshot) {
@@ -1072,6 +1170,14 @@ function confirmModal(title, message, action, id) {
 async function handleAction(button) {
   const action = button.dataset.action,
     id = button.dataset.id
+  if (action === 'inbox-open' || action === 'inbox-dismiss') {
+    clearTimeout(inboxPopupTimer)
+    state.notificationPopup = null
+    renderInboxPopup()
+    if (action === 'inbox-open' && state.view !== 'notifications') location.hash = 'notifications'
+    else document.querySelector('#main')?.focus({ preventScroll: true })
+    return
+  }
   if (action === 'register') {
     if (!state.user) register()
     return
@@ -1834,18 +1940,19 @@ async function start() {
   }
 }
 start()
-setTimeout(
-  () => {
-    pollSnapshot()
-    setInterval(pollSnapshot, 60_000)
-  },
-  60_000 - (Date.now() % 60_000) + 1_000,
-)
+setInterval(pollSnapshot, 15_000)
 setInterval(syncTodayAttendance, 15_000)
 window.addEventListener('focus', () => {
   pollSnapshot()
   if (state.view === 'analytics' && state.user && !state.busy) loadAnalytics({ liveOnly: true })
 })
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) pollSnapshot()
+})
+if ('serviceWorker' in navigator)
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'portal-inbox-update') pollSnapshot()
+  })
 window.addEventListener('resize', () => {
   if (!state.user) return
   if (!matchMedia('(max-width: 900px)').matches && state.drawer) setDrawer(false)

@@ -32,8 +32,8 @@ Admin snapshots additionally contain `registrations:[{id,name,email,status,creat
 - task `{id,title,description,assigneeId,clientId,jobFunction,deadline,priority,state,createdAt,updatedAt,completedAt,approvedAt,version,intervals:[{start,end:null|string}],events:[{actorId,from,to,at,reason?,kind}],workSeconds,overdue}`. State labels exactly `Assigned`, `In-progress`, `Completed`, `Approved`.
 - update `{id,employeeId,date,text,submittedAt,editedAt}`; Admin sees team updates; Employee sees own.
 - absence `{id,employeeId,kind:'leave'|'permission',start,end,reason,status:'Pending'|'Approved'|'Rejected',createdAt,decidedAt,decisionNote}`. Leave start/end date strings inclusive; permission ISO instants. Employee sees own requests.
-- note `{id,text,recipientIds:[] (empty = all),authorId,createdAt}`. Visible only to intended recipients and Admin.
-- notification `{id,employeeId,title,text,createdAt,readAt}`; own inbox only.
+- note `{id,text,recipientIds:[] (empty = all),authorId,createdAt,author:null|{id,name,role}}`. Visible only to intended recipients and Admin. Author attribution also works for legacy notes; it does not grant access to the author's private profile or contact fields.
+- notification `{id,title,text,createdAt,readAt,sender:null|{id,name,role},taskId?,transitionVersion?}`; own inbox only. New notes and broadcasts persist their sender ID; legacy notifications without sender metadata do not invent attribution. The sidebar count is the number of own notifications with no `readAt`; note alerts count once, not again as separate notes.
 - today business date; updateStatus `{status:'pending'|'overdue'|'on-time'|'late'|'exempt',deadline,submittedAt?}` for logged-in user.
 
 ## Action payloads (flat object including type)
