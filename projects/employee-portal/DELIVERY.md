@@ -10,6 +10,8 @@ No VAPID rotation, subscription reset, billing change or database migration is n
 
 Checks: `npm run quality` passed lint, formatting, **157 tests**, marketing browser checks and portal browser checks. `npm run deploy:preview` and `git diff --check` passed. The workerd sender regression reproduced the failure before the one-option fix; afterward it made the intercepted provider request, verified signature/ciphertext interoperability, and rejected a redirect without following it. Diagnostics privacy tests use synthetic sentinel errors/provider bodies and prove they are not returned. No production keys, subscriptions or accounts were read or changed to produce this evidence.
 
+Release: code commit `fb343be` was pushed and deployed as Worker version `dea2d6a4-15f9-447d-b284-af4ea62b9079`. Both production origins passed read-only exact-build/service-worker/manifest/icon/security verification. Existing VAPID keys and subscriptions are unchanged. The runtime blocker is verified fixed locally; live provider acceptance and physical-device display await the user's next **Send test notification** receipt.
+
 ## Device notifications and mobile setup
 
 The portal now includes an install manifest with real local 192/512-pixel PNG icons, scoped to `/portal/`. This enables the Home Screen web-app path required for iOS/iPadOS Web Push. No authenticated responses are cached by the service worker and no external assets or weaker CSP were added.
