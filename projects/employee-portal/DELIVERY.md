@@ -16,6 +16,8 @@ Release: code commit `a16cf0b` was pushed to `main` and deployed as Worker versi
 
 To try the release, reload `/portal/`, hover/focus or tap a visible team name, and click its photo for the larger view. In your profile, choose a photo, drag to position and pinch/scroll to zoom, select **Use photo**, then **Save photo**. Confirm Cancel leaves the previous image unchanged on your device.
 
+Follow-up release: commit `5fb3007` was pushed to `main` and deployed as Worker version `e833fea7-37a5-4c09-bb05-b2706cbf0890`. New photos now save at up to 512 × 512 baseline JPEG under 32 KiB; existing 128 × 128 photos need one edit or re-upload to regain detail. Three newly generated production-only VAPID secrets are configured (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` with the site URL as subject); their values are not stored in the repository. Both production origins passed read-only deployment verification. Users must reload and enable browser notifications once on each browser; delivery still depends on browser/device permission and support.
+
 ## Admin in-time and Analytics follow-up
 
 The owner confirmed that production sign-in/password change works and additional Admin accounts were created after the Cloudflare-native release. The account counts and pending-rotation evidence in the previous release section are historical snapshots, not current account inventory.
