@@ -127,31 +127,30 @@ export function buildAnalytics(snapshot, filters = {}, now = new Date()) {
   }
   const scopedIds = new Set(tasks.map((t) => t.assigneeId))
   const employees = (snapshot.employees || [])
-    .filter(
-      (e) =>
-        e.role !== 'Admin' &&
-        (!employeeId || e.id === employeeId) &&
-        (!(clientId || jobFunction || state) || scopedIds.has(e.id)),
-    )
+    .filter((e) => (!employeeId || e.id === employeeId) && (!(clientId || jobFunction || state) || scopedIds.has(e.id)))
     .map((e) => {
       const group = tasks.filter((t) => t.assigneeId === e.id)
-      const updates = (snapshot.updates || []).filter((u) => u.employeeId === e.id && inRange(u.date))
+      const role = e.role === 'Admin' ? 'Admin' : 'Employee'
+      const updates =
+        role === 'Employee' ? (snapshot.updates || []).filter((u) => u.employeeId === e.id && inRange(u.date)) : []
       const counts = { updateOnTime: 0, updateLate: 0, updateMissing: 0, updateExempt: 0 }
-      const firstKnown =
-        [e.createdAt && businessDate(e.createdAt), ...updates.map((u) => u.date)].filter(Boolean).sort()[0] || anchor
-      const start = from || (firstKnown > minDate ? firstKnown : minDate)
-      const end = anchor
-      const first = Date.parse(`${start}T00:00:00Z`),
-        last = Date.parse(`${end}T00:00:00Z`)
-      if ((last - first) / 86_400_000 > 366) invalid('Reporting range too large')
-      for (let day = first; day <= last; day += 86_400_000) {
-        const date = new Date(day).toISOString().slice(0, 10)
-        const at = date === today ? current : `${date}T17:30:00+05:30`
-        const status = dailyUpdateStatus(e.id, updates, absences, at, e).status
-        if (status === 'on-time') counts.updateOnTime++
-        else if (status === 'late') counts.updateLate++
-        else if (status === 'exempt') counts.updateExempt++
-        else if (status === 'overdue') counts.updateMissing++
+      if (role === 'Employee') {
+        const firstKnown =
+          [e.createdAt && businessDate(e.createdAt), ...updates.map((u) => u.date)].filter(Boolean).sort()[0] || anchor
+        const start = from || (firstKnown > minDate ? firstKnown : minDate)
+        const end = anchor
+        const first = Date.parse(`${start}T00:00:00Z`),
+          last = Date.parse(`${end}T00:00:00Z`)
+        if ((last - first) / 86_400_000 > 366) invalid('Reporting range too large')
+        for (let day = first; day <= last; day += 86_400_000) {
+          const date = new Date(day).toISOString().slice(0, 10)
+          const at = date === today ? current : `${date}T17:30:00+05:30`
+          const status = dailyUpdateStatus(e.id, updates, absences, at, e).status
+          if (status === 'on-time') counts.updateOnTime++
+          else if (status === 'late') counts.updateLate++
+          else if (status === 'exempt') counts.updateExempt++
+          else if (status === 'overdue') counts.updateMissing++
+        }
       }
       const records = (snapshot.loginRecords || []).filter((r) => r && r.employeeId === e.id && inRange(r.date))
       const loginDays = records.length
@@ -165,6 +164,7 @@ export function buildAnalytics(snapshot, filters = {}, now = new Date()) {
       return {
         id: e.id,
         name: e.name,
+        role,
         firstLoginAt,
         loginSeconds: loginTotal,
         loginDays,

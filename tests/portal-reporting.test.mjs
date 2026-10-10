@@ -98,6 +98,47 @@ test('analytics records first login and caps employee duration at the business c
   assert.equal(report.employees[0].loginSeconds, 26100)
 })
 
+test('analytics reports Admin login attendance, selected Admin filters, and no Admin update debt', () => {
+  const report = buildAnalytics(
+    {
+      ...snapshot,
+      employees: [
+        { id: 'admin', name: 'Administrator', role: 'Admin', createdAt: '2026-10-01T04:00:00Z' },
+        { id: 'e', name: 'E', role: 'Employee', createdAt: '2026-10-01T04:00:00Z' },
+      ],
+      tasks: [
+        {
+          ...snapshot.tasks[0],
+          assigneeId: 'admin',
+          createdAt: '2026-10-06T04:30:00Z',
+          clientId: 'c',
+          jobFunction: 'edit',
+        },
+      ],
+      loginRecords: [
+        { employeeId: 'admin', date: '2026-10-06', firstLoginAt: '2026-10-06T04:30:00.000Z' },
+        { employeeId: 'e', date: '2026-10-06', firstLoginAt: '2026-10-06T04:30:00.000Z' },
+      ],
+    },
+    { from: '2026-10-06', to: '2026-10-06', employeeId: 'admin', clientId: 'c', jobFunction: 'edit' },
+    '2026-10-06T06:00:00Z',
+  )
+  assert.deepEqual(
+    report.employees.map(({ id, role }) => ({ id, role })),
+    [{ id: 'admin', role: 'Admin' }],
+  )
+  assert.equal(report.employees[0].loginDays, 1)
+  assert.equal(report.employees[0].loginSeconds, 5400)
+  assert.equal(report.employees[0].todayFirstLoginAt, '2026-10-06T04:30:00.000Z')
+  assert.equal(report.employees[0].todayLoginSeconds, 5400)
+  assert.equal(report.employees[0].updateOnTime, 0)
+  assert.equal(report.employees[0].updateLate, 0)
+  assert.equal(report.employees[0].updateMissing, 0)
+  assert.equal(report.employees[0].updateExempt, 0)
+  assert.equal(report.summary.loginDays, 1)
+  assert.equal(report.summary.loginSeconds, 5400)
+})
+
 test('reopened work counts as a second work iteration without double counting approval', () => {
   const task = {
     ...snapshot.tasks[0],
@@ -142,10 +183,15 @@ test('role, lifecycle, pending today and future dates do not produce false missi
     tasks: [],
   }
   const result = buildAnalytics(data, { from: '2026-10-05', to: '2026-10-10' }, '2026-10-07T04:00:00Z')
-  assert.equal(result.employees.length, 1)
-  assert.equal(result.employees[0].updateExempt, 2)
-  assert.equal(result.employees[0].updateMissing, 0)
-  assert.equal(result.employees[0].updateOnTime, 0)
+  assert.equal(result.employees.length, 2)
+  const admin = result.employees.find((employee) => employee.id === 'admin')
+  assert.equal(admin.role, 'Admin')
+  assert.equal(admin.updateExempt, 0)
+  assert.equal(admin.updateMissing, 0)
+  const employee = result.employees.find((employee) => employee.id === 'e')
+  assert.equal(employee.updateExempt, 2)
+  assert.equal(employee.updateMissing, 0)
+  assert.equal(employee.updateOnTime, 0)
   assert.equal(result.summary.medianWorkSeconds, 0)
 })
 

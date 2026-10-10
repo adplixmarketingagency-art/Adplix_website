@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { strFromU8, unzipSync } from 'fflate'
 import { employeeChart, trendChart } from '../portal/analytics-charts.mjs'
+import { analyticsWorkbook } from '../src/portal/excel.mjs'
 
 test('renders real dotted open cohorts and escaped hover/focus details for each category', () => {
   const employee = employeeChart([
@@ -115,6 +117,59 @@ test('uses today login fields, including zero and legacy fallback labels', () =>
   assert.match(today, /data-today-duration="e&quot; onmouseover=&quot;bad\(\)"/)
   assert.doesNotMatch(today, /data-today-login="e" onmouseover=/)
   assert.doesNotMatch(legacy, /data-today-login/)
+})
+
+test('labels Admin and Employee rows and shows Admin first login and duration', () => {
+  const html = employeeChart([
+    {
+      id: 'admin-1',
+      name: 'Asha Admin',
+      role: 'Admin',
+      assigned: 1,
+      completed: 1,
+      firstLoginAt: '2026-10-01T04:30:00Z',
+      loginSeconds: 5400,
+      loginDays: 2,
+    },
+    { id: 'employee-1', name: 'Editor', role: 'Employee' },
+  ])
+  assert.match(html, /Asha Admin <small class="team-member-role">Admin<\/small>/)
+  assert.match(html, /Editor <small class="team-member-role">Employee<\/small>/)
+  assert.match(html, /aria-label="Asha Admin, Admin"/)
+  assert.match(html, /First login \(historical fallback\) <strong>10:00<\/strong>/)
+  assert.match(html, /1h 30m logged · selected period/)
+  assert.match(html, /Current task status and attendance by team member/)
+})
+
+test('exports role-aware team rows with Admin login fields and legacy role fallback', () => {
+  const workbook = analyticsWorkbook(
+    {
+      summary: {},
+      filters: {},
+      employees: [
+        {
+          id: 'admin-1',
+          name: 'Asha Admin',
+          role: 'Admin',
+          firstLoginAt: '2026-10-01T04:30:00Z',
+          loginDays: 2,
+          loginSeconds: 5400,
+        },
+        { id: 'employee-1', name: 'Editor' },
+      ],
+      tasks: [],
+    },
+    { serverNow: '2026-10-07T12:00:00Z' },
+  )
+  const files = unzipSync(workbook)
+  assert.match(strFromU8(files['xl/workbook.xml']), /<sheet name="Team"/)
+  const sheet = strFromU8(files['xl/worksheets/sheet2.xml'])
+  assert.match(sheet, /<c r="A1" t="inlineStr"><is><t xml:space="preserve">Team member ID<\/t>/)
+  assert.match(sheet, /<c r="C1" t="inlineStr"><is><t xml:space="preserve">Role<\/t>/)
+  assert.match(sheet, /<c r="C2" t="inlineStr"><is><t xml:space="preserve">Admin<\/t>/)
+  assert.match(sheet, /<c r="C3" t="inlineStr"><is><t xml:space="preserve">Employee<\/t>/)
+  assert.match(sheet, /<c r="D2" t="inlineStr"><is><t xml:space="preserve">2026-10-01T04:30:00Z<\/t>/)
+  assert.match(sheet, /<c r="F2"><v>5400<\/v><\/c>/)
 })
 
 test('pending-only cohorts render without events; historical cohorts are not invented', () => {

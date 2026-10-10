@@ -284,6 +284,19 @@ test('Admin deactivation keeps the final active Admin protected and new Admin ca
   assert.equal((await f.request('actions', { type: 'employee.deactivate', id: created.id }, createdAuth)).status, 409)
 })
 
+test('successful Admin login persists one attendance record per business date', async (t) => {
+  const f = fixture()
+  t.after(() => f.close())
+  const { admin } = await withAdmin(f)
+
+  const first = await f.request('login', { email: admin.email, password })
+  const second = await f.request('login', { email: admin.email, password })
+  assert.equal(first.status, 200)
+  assert.equal(second.status, 200)
+  assert.equal(f.state().loginRecords.length, 1)
+  assert.equal(f.state().loginRecords[0].employeeId, admin.id)
+})
+
 test('designations, calendar, targets and note notifications follow role permissions', async (t) => {
   const f = fixture()
   t.after(() => f.close())

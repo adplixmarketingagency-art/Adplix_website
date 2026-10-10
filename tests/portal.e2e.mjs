@@ -7,7 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
 import { expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { unzipSync } from 'fflate'
+import { strFromU8, unzipSync } from 'fflate'
 import { hashPassword } from '../src/portal/auth.mjs'
 import { businessDate } from '../src/portal/domain.mjs'
 import { analyticsPresetFilters } from '../portal/analytics-filters.mjs'
@@ -62,7 +62,7 @@ const taskCard = (page, title) =>
 const editorProgress = (page) =>
   page
     .locator('.employee-row')
-    .filter({ has: page.locator('.employee-label > span').filter({ hasText: /^Test Editor$/ }) })
+    .filter({ has: page.locator('.employee-label > span').filter({ hasText: /^Test Editor Employee$/ }) })
 async function checkProgress(page, done) {
   await page.getByRole('button', { name: 'Refresh', exact: true }).click()
   const row = editorProgress(page)
@@ -521,8 +521,8 @@ try {
   await expect(adminPage.getByRole('heading', { name: 'Team summary', exact: true })).toBeVisible()
   await analyticsFilters.getByLabel('Reporting period', { exact: true }).selectOption('month')
   await analyticsFilters.getByLabel('Month', { exact: true }).fill(reportingMonth)
-  await analyticsFilters.getByLabel('Employee', { exact: true }).selectOption({ label: 'Test Editor' })
-  const selectedEmployeeId = await analyticsFilters.getByLabel('Employee', { exact: true }).inputValue()
+  await analyticsFilters.getByLabel('Team member', { exact: true }).selectOption({ label: 'Test Editor · Employee' })
+  const selectedEmployeeId = await analyticsFilters.getByLabel('Team member', { exact: true }).inputValue()
   const monthRequest = adminPage.waitForRequest(
     (request) =>
       request.url().includes('/api/portal/analytics?') &&
@@ -532,15 +532,15 @@ try {
   await analyticsFilters.getByRole('button', { name: 'Apply filters', exact: true }).click()
   await monthRequest
   await expect(adminPage.locator('form[data-form="filters"] .fine')).toContainText(`Month: ${reportingMonth}`)
-  await expect(adminPage.locator('form[data-form="filters"] .fine')).toContainText('Employee: Test Editor')
+  await expect(adminPage.locator('form[data-form="filters"] .fine')).toContainText('Team member: Test Editor')
   await expect(
     adminPage
-      .getByRole('list', { name: 'Current task status and attendance by employee' })
+      .getByRole('list', { name: 'Current task status and attendance by team member' })
       .locator(':scope > .employee-row'),
   ).toHaveCount(1)
-  await expect(adminPage.getByRole('list', { name: 'Current task status and attendance by employee' })).toContainText(
-    'Test Editor',
-  )
+  await expect(
+    adminPage.getByRole('list', { name: 'Current task status and attendance by team member' }),
+  ).toContainText('Test Editor')
   const [monthDownload, monthExport] = await Promise.all([
     adminPage.waitForEvent('download'),
     adminPage.waitForRequest(
@@ -589,10 +589,10 @@ try {
   await yearRequest
   await expect(adminPage.locator('form[data-form="filters"] .fine')).toContainText(`Year: ${reportingYear}`)
   await expect(adminPage.locator('form[data-form="filters"] [name="employeeId"]')).toHaveValue(selectedEmployeeId)
-  await expect(adminPage.getByRole('heading', { name: 'Employees', exact: true })).toBeVisible()
+  await expect(adminPage.getByRole('heading', { name: 'Team attendance & work', exact: true })).toBeVisible()
   await expect(
     adminPage
-      .getByRole('list', { name: 'Current task status and attendance by employee' })
+      .getByRole('list', { name: 'Current task status and attendance by team member' })
       .locator(':scope > .employee-row'),
   ).not.toHaveCount(0)
   await expect(editorProgress(adminPage).locator('.employee-label strong')).toHaveText('3 of 3 completed (100%)')
@@ -618,6 +618,7 @@ try {
   await download.saveAs(resolve(folder, 'report.xlsx'))
   const workbook = unzipSync(new Uint8Array(await readFile(resolve(folder, 'report.xlsx'))))
   assert.equal(Object.keys(workbook).filter((p) => /worksheets\/sheet\d.xml$/.test(p)).length, 6)
+  assert.match(strFromU8(workbook['xl/worksheets/sheet2.xml']), /<c r="C1"[^>]*>.*?Role<\/t>/)
   await adminPage.screenshot({ path: resolve(screenshots, 'admin-analytics.png'), fullPage: true })
   await adminPage.setViewportSize({ width: 375, height: 812 })
   await noOverflow(adminPage)
@@ -626,6 +627,21 @@ try {
   await adminPage.setViewportSize({ width: 812, height: 375 })
   await noOverflow(adminPage)
   await adminPage.setViewportSize({ width: 1440, height: 1000 })
+  await analyticsFilters.getByLabel('Team member', { exact: true }).selectOption({ label: 'Test Admin · Admin' })
+  await analyticsFilters.getByRole('button', { name: 'Apply filters', exact: true }).click()
+  await expect(analyticsFilters.locator('.fine')).toContainText('Team member: Test Admin')
+  const adminRow = adminPage.getByRole('listitem', { name: 'Test Admin, Admin' })
+  await expect(adminRow).toContainText("Today's first login")
+  await expect(adminRow).toContainText('logged today')
+  const [adminDownload] = await Promise.all([
+    adminPage.waitForEvent('download'),
+    adminPage.getByRole('button', { name: 'Download Excel', exact: true }).click(),
+  ])
+  await adminDownload.saveAs(resolve(folder, 'admin-report.xlsx'))
+  const adminWorkbook = unzipSync(new Uint8Array(await readFile(resolve(folder, 'admin-report.xlsx'))))
+  const adminSheet = strFromU8(adminWorkbook['xl/worksheets/sheet2.xml'])
+  assert.match(adminSheet, /<c r="C2"[^>]*>.*?Admin<\/t>/)
+  assert.match(adminSheet, /<c r="F2"><v>[1-9]\d*<\/v><\/c>/)
   await navigate(employeePage, 'Overview')
   await employeePage.getByRole('button', { name: 'Refresh', exact: true }).click()
   await employeePage.screenshot({ path: resolve(screenshots, 'employee-desktop.png'), fullPage: true })

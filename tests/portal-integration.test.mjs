@@ -307,7 +307,16 @@ test(
         await call('export', employee, undefined, 403)
         const analytics = await call('analytics', account)
         assert.equal(analytics.summary.approved, 1)
-        assert.ok(analytics.employees.every((e) => e.id !== 'admin'))
+        const adminAttendance = analytics.employees.find((e) => e.id === 'admin')
+        assert.equal(adminAttendance.role, 'Admin')
+        assert.equal(adminAttendance.loginDays, 1)
+        assert.equal(adminAttendance.updateMissing, 0)
+        const selectedAdmin = await call('analytics?employeeId=admin', account)
+        assert.deepEqual(
+          selectedAdmin.employees.map((e) => e.id),
+          ['admin'],
+        )
+        assert.equal(selectedAdmin.summary.loginDays, 1)
         const workbook = await call('export', account)
         const files = unzipSync(new Uint8Array(await workbook.arrayBuffer()))
         assert.equal(Object.keys(files).filter((p) => /worksheets\/sheet\d.xml$/.test(p)).length, 6)

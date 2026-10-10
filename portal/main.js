@@ -657,7 +657,7 @@ function analyticsView() {
           ? `Custom range: ${f.from || '—'} to ${f.to || '—'}`
           : 'All time'
   const scope = [
-    f.employeeId && `Employee: ${emp.find((e) => String(e.id) === String(f.employeeId))?.name || f.employeeId}`,
+    f.employeeId && `Team member: ${emp.find((e) => String(e.id) === String(f.employeeId))?.name || f.employeeId}`,
     f.clientId && `Client: ${cli.find((c) => String(c.id) === String(f.clientId))?.name || f.clientId}`,
     f.jobFunction && `Function: ${f.jobFunction}`,
   ]
@@ -666,7 +666,13 @@ function analyticsView() {
   const hasTimeline = arr(a?.trend).length || arr(a?.assignmentTrend).length
   return `<div class="page-heading"><div><p class="eyebrow">Reporting</p><h1>Performance</h1><p class="muted">Saved records for the selected period; historical reports can change as records are updated.</p></div></div>${section(
     'Filters',
-    `<form data-form="filters"><div class="form-grid"><label class="field"><span>Reporting period</span><select name="period"><option value="all" ${period === 'all' ? 'selected' : ''}>All time</option><option value="month" ${period === 'month' ? 'selected' : ''}>Month</option><option value="year" ${period === 'year' ? 'selected' : ''}>Year</option><option value="custom" ${period === 'custom' ? 'selected' : ''}>Custom date range</option></select></label>${input('month', 'Month', 'month', f.month || '')}${input('year', 'Year', 'number', f.year || '', 'min="2000" max="2100"')}${input('from', 'From', 'date', f.from || '')}${input('to', 'To', 'date', f.to || '')}${select('employeeId', 'Employee', emp, f.employeeId, false)}${select('clientId', 'Client', cli, f.clientId, false)}<label class="field"><span>Job function</span><select name="jobFunction">${options(
+    `<form data-form="filters"><div class="form-grid"><label class="field"><span>Reporting period</span><select name="period"><option value="all" ${period === 'all' ? 'selected' : ''}>All time</option><option value="month" ${period === 'month' ? 'selected' : ''}>Month</option><option value="year" ${period === 'year' ? 'selected' : ''}>Year</option><option value="custom" ${period === 'custom' ? 'selected' : ''}>Custom date range</option></select></label>${input('month', 'Month', 'month', f.month || '')}${input('year', 'Year', 'number', f.year || '', 'min="2000" max="2100"')}${input('from', 'From', 'date', f.from || '')}${input('to', 'To', 'date', f.to || '')}${select(
+      'employeeId',
+      'Team member',
+      emp.map((person) => ({ ...person, name: `${person.name} · ${person.role === 'Admin' ? 'Admin' : 'Employee'}` })),
+      f.employeeId,
+      false,
+    )}${select('clientId', 'Client', cli, f.clientId, false)}<label class="field"><span>Job function</span><select name="jobFunction">${options(
       jobFunctions.map((j) => ({ id: j, name: j })),
       f.jobFunction,
       'All functions',
@@ -685,7 +691,7 @@ function analyticsView() {
             .join('')}</div>`,
         )
       : empty('No report loaded yet. Apply filters to view saved records.')
-  }${a ? section('Completed work over time', `${analyticsQuickFilters()}${hasTimeline ? trendChart(arr(a.trend)) : empty('No completions in this range.')}`) : ''}${a ? section('Employees', arr(a.employees).length ? employeeChart(a.employees) : empty('No employee records for these filters.')) : ''}`
+  }${a ? section('Completed work over time', `${analyticsQuickFilters()}${hasTimeline ? trendChart(arr(a.trend)) : empty('No completions in this range.')}`) : ''}${a ? section('Team attendance & work', arr(a.employees).length ? employeeChart(a.employees) : empty('No team member records for these filters.')) : ''}`
 }
 
 let priorFocus

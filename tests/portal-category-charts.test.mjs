@@ -77,6 +77,7 @@ test('current states have one slot each; category and event totals remain aligne
   )
   const html = employeeChart(report.employees)
   assert.match(html, /2 of 4 completed \(50%\)/)
+  assert.match(html, /Alice <small class="team-member-role">Employee<\/small>/)
   assert.equal((html.match(/assignment-slot /g) || []).length, 4)
   assert.equal((html.match(/assignment-slot [^"\n]* filled/g) || []).length, 2)
   assert.match(trendChart(report.trend, report.trendBreakdown, report.assignmentTrend), /task-type-video-editing/)

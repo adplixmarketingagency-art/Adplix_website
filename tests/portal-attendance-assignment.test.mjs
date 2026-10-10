@@ -31,3 +31,30 @@ test('login duration is capped at 17:30 and malformed records are safe', () => {
   assert.equal(loginSeconds(record, new Date('2025-06-10T14:00:00Z')), 30600)
   assert.equal(currentLoginRecord([{ employeeId: 'e1', date: 'bad' }], 'e1', new Date('2025-06-10T10:00:00Z')), null)
 })
+
+test('Admin in-time follows employee cutoff, day rollover and selected-period totals', () => {
+  const admin = { id: 'a1', name: 'Admin', role: 'Admin' }
+  const data = {
+    ...snapshot([]),
+    employees: [admin, employee],
+    loginRecords: [
+      { employeeId: 'a1', date: '2025-06-09', firstLoginAt: '2025-06-09T04:30:00Z' },
+      { employeeId: 'a1', date: '2025-06-10', firstLoginAt: '2025-06-10T04:30:00Z' },
+      { employeeId: 'e1', date: '2025-06-10', firstLoginAt: '2025-06-10T05:00:00Z' },
+    ],
+  }
+  const result = buildAnalytics(data, {}, '2025-06-10T06:00:00Z')
+  const row = result.employees.find((person) => person.id === 'a1')
+  assert.equal(row.todayFirstLoginAt, '2025-06-10T04:30:00Z')
+  assert.equal(row.todayLoginSeconds, 5400)
+  assert.equal(row.loginSeconds, 27000 + 5400)
+  assert.equal(result.summary.loginSeconds, row.loginSeconds + 3600)
+  const cutoff = buildAnalytics(data, { employeeId: 'a1' }, '2025-06-10T12:00:00Z').employees[0]
+  assert.equal(cutoff.todayFirstLoginAt, null)
+  assert.equal(cutoff.todayLoginSeconds, 0)
+  assert.equal(cutoff.loginSeconds, 54000)
+  const tomorrow = buildAnalytics(data, { employeeId: 'a1' }, '2025-06-11T05:00:00Z').employees[0]
+  assert.equal(tomorrow.todayFirstLoginAt, null)
+  assert.equal(tomorrow.loginDays, 2)
+  assert.equal(tomorrow.updateMissing, 0)
+})

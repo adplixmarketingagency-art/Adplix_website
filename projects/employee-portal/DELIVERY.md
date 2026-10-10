@@ -1,5 +1,15 @@
 # Employee Portal — Delivery and Setup
 
+## Admin in-time and Analytics follow-up
+
+The owner confirmed that production sign-in/password change works and additional Admin accounts were created after the Cloudflare-native release. The account counts and pending-rotation evidence in the previous release section are historical snapshots, not current account inventory.
+
+Admin logins now persist the same first-login-per-Asia/Kolkata-date records as Employees. Repeated sign-ins do not replace the day's first in-time. Login duration runs from that first login to the earlier of now or 17:30 IST; the live today fields clear at cutoff and day rollover while selected-period totals retain saved history. This is elapsed login time, not active attendance, task working time or a clock-out system. Existing signed-in Admins should sign out and sign back in once to start recording; no earlier Admin in-times were backfilled.
+
+Analytics includes Admin and Employee rows with role labels under **Team attendance & work**, and the **Team member** filter supports either role. Matching Admin time contributes to selected report totals; task/client/function filters keep their existing scoping. The Excel **Team** sheet includes a Role column and Admin login metrics. Admins are not counted as missing employee daily updates. Employee access to Admin analytics remains denied. No schema migration, database reset or credentials change is required.
+
+Verification: `npm run quality` passed lint, formatting, **124 tests**, marketing browser checks and portal browser checks. The browser flow selected an Admin in Analytics and downloaded an Admin Excel report. Regression coverage includes first-login persistence/deduplication, Admin summary totals, 17:30 cutoff, day rollover and employee authorization boundaries. Production deployment/read-only checks are the final release step; local tests do not establish real-account production data.
+
 ## Current release readiness (9 October 2026)
 
 The historical notes below describe earlier local-only milestones. The Worker is now deployed to `https://adplixmedia.in/portal/` and `https://withered-pine-ee0b.adplixmarketingagency.workers.dev/portal/`, with the `PORTAL_DB` binding to `adplix-portal`. The latest aggregate production check confirmed one provisioned Admin with initial password rotation still required and no completed password-change audit event. No database reset or credential replacement was performed during debugging.

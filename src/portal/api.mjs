@@ -836,10 +836,10 @@ export async function handlePortalApi(request, env, context) {
             (x.credentialVersion || 0) === (user.credentialVersion || 0),
         )
       if (!current) fail('Invalid credentials.', 401)
-      if (current.role === 'Employee')
-        await mutate(db, (s) =>
-          loginRecordFor((s.loginRecords ||= []), current.id, businessDate(new Date()), new Date()),
-        )
+      if (current.role === 'Admin' || current.role === 'Employee') {
+        const loginAt = new Date()
+        await mutate(db, (s) => loginRecordFor((s.loginRecords ||= []), current.id, businessDate(loginAt), loginAt))
+      }
       const { state: afterLogin } = await readState(db),
         sessionUser = afterLogin.users.find(
           (x) => x.id === current.id && x.active && x.passwordHash === current.passwordHash,

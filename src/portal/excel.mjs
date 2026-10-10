@@ -43,7 +43,7 @@ export function analyticsWorkbook(analytics, snapshot) {
   const inRange = (date) =>
     (!analytics.filters.from || date >= analytics.filters.from) &&
     (!analytics.filters.to || date <= analytics.filters.to)
-  const names = ['Summary', 'Employees', 'Tasks', 'Daily Updates', 'Absences', 'Definitions']
+  const names = ['Summary', 'Team', 'Tasks', 'Daily Updates', 'Absences', 'Definitions']
   const rows = [
     [
       ['Metric', 'Value'],
@@ -67,8 +67,9 @@ export function analyticsWorkbook(analytics, snapshot) {
     ],
     [
       [
-        'Employee ID',
+        'Team member ID',
         'Name',
+        'Role',
         'Login date/time',
         'Login days',
         'Login seconds',
@@ -97,6 +98,7 @@ export function analyticsWorkbook(analytics, snapshot) {
         .map((e) => [
           e.id,
           e.name,
+          e.role || 'Employee',
           e.firstLoginAt,
           e.loginDays,
           e.loginSeconds,
@@ -184,7 +186,7 @@ export function analyticsWorkbook(analytics, snapshot) {
       ],
       [
         'Login duration',
-        'Elapsed time from an employee’s first login of each business date through the earlier of the current time or 17:30 Asia/Kolkata; one first-login record per employee per date.',
+        'Elapsed time from a team member’s first login of each business date through the earlier of the current time or 17:30 Asia/Kolkata; one first-login record per team member per date.',
       ],
       [
         'Current status segments',
