@@ -219,6 +219,69 @@ test('admin account-detail edit preserves an employee photo', async () => {
   assert.equal(f.state.users[1].profile.photoDataUrl, photo)
 })
 
+test('snapshot glimpses whitelist visible profiles by role while preserving existing employee and self privacy', async () => {
+  const admin = user('admin', 'Admin'),
+    viewer = user('viewer', 'Employee'),
+    peer = user('peer', 'Employee'),
+    inactiveEmployee = user('inactive-employee', 'Employee'),
+    inactiveAdmin = user('inactive-admin', 'Admin'),
+    malformed = user('malformed', 'Employee')
+  for (const person of [admin, viewer, peer, inactiveEmployee, inactiveAdmin, malformed]) {
+    person.designation = `${person.id} role`
+    person.jobFunctions = ['Design']
+    person.passwordHash = `secret-${person.id}`
+    person.credentialVersion = 42
+    person.profile.photoDataUrl = photo
+  }
+  peer.name = 'Peer Name'
+  malformed.profile.photoDataUrl = 'data:image/jpeg;base64,PHN2Zz4='
+  inactiveEmployee.active = false
+  inactiveAdmin.active = false
+  const f = fixture([admin, viewer, peer, inactiveEmployee, inactiveAdmin, malformed])
+  const adminSnapshot = await (await call(f, 'snapshot', 'GET', headers(f, admin))).json()
+  assert.deepEqual(
+    adminSnapshot.profileGlimpses.map(({ id }) => id),
+    ['admin', 'viewer', 'peer', 'inactive-employee', 'inactive-admin', 'malformed'],
+  )
+  assert.equal(adminSnapshot.profileGlimpses.find((p) => p.id === 'admin').photoDataUrl, photo)
+  assert.equal(adminSnapshot.profileGlimpses.find((p) => p.id === 'peer').photoDataUrl, photo)
+  assert.equal(adminSnapshot.profileGlimpses.find((p) => p.id === 'malformed').photoDataUrl, null)
+
+  const employeeSnapshot = await (await call(f, 'snapshot', 'GET', headers(f, viewer, 'b'.repeat(64)))).json()
+  assert.deepEqual(
+    employeeSnapshot.profileGlimpses.map(({ id }) => id),
+    ['viewer', 'peer', 'malformed'],
+  )
+  assert.deepEqual(
+    employeeSnapshot.profileGlimpses.find((p) => p.id === 'peer'),
+    {
+      id: 'peer',
+      name: 'Peer Name',
+      role: 'Employee',
+      designation: 'peer role',
+      jobFunctions: ['Design'],
+      active: true,
+      photoDataUrl: photo,
+    },
+  )
+  for (const glimpse of [...adminSnapshot.profileGlimpses, ...employeeSnapshot.profileGlimpses]) {
+    assert.deepEqual(
+      Object.keys(glimpse).sort(),
+      ['id', 'name', 'role', 'designation', 'jobFunctions', 'active', 'photoDataUrl'].sort(),
+    )
+    for (const privateField of ['email', 'phone', 'bio', 'profile', 'credentialVersion', 'passwordHash', 'employeeId'])
+      assert.equal(privateField in glimpse, false)
+  }
+  assert.equal(
+    employeeSnapshot.employees.some((p) => p.role === 'Admin' || !p.active),
+    false,
+  )
+  assert.equal(employeeSnapshot.employees.find((p) => p.id === 'peer').profile, undefined)
+  assert.equal(employeeSnapshot.user.profile.phone, '123')
+  assert.equal(employeeSnapshot.user.profile.bio, 'About me')
+  assert.equal(employeeSnapshot.user.email, 'viewer@example.test')
+})
+
 test('photo mutation enforces origin, CSRF, authentication, active account and password-change requirement', async () => {
   const self = user('self', 'Admin'),
     f = fixture([self]),

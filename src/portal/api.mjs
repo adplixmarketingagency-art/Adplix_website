@@ -123,6 +123,25 @@ const registrationPublic = ({ id, name, email, designation, status, createdAt, d
   decidedAt,
   employeeId: employeeId || null,
 })
+const profileGlimpse = ({ id, name, role, designation, jobFunctions, active, profile }) => {
+  let photoDataUrl = null
+  if (profile?.photoDataUrl) {
+    try {
+      photoDataUrl = validateProfilePhoto(profile.photoDataUrl)
+    } catch {
+      // Legacy photos can predate validation; never pass malformed data to viewers.
+    }
+  }
+  return {
+    id,
+    name,
+    role,
+    designation: designation || '',
+    jobFunctions: jobFunctions || [],
+    active: !!active,
+    photoDataUrl,
+  }
+}
 const validateSubscription = (sub) => {
   if (!sub || typeof sub !== 'object' || typeof sub.endpoint !== 'string' || sub.endpoint.length > 2048)
     fail('Invalid subscription.')
@@ -157,6 +176,7 @@ const snapshot = (state, user, now = new Date()) => {
   const visibleEmployees = state.users.filter((u) => (u.active || isAdmin) && (isAdmin || u.role === 'Employee'))
   return {
     user: publicUser(user),
+    profileGlimpses: visibleEmployees.map(profileGlimpse),
     employees: visibleEmployees.map((u) =>
       isAdmin
         ? { ...publicUser(u), updateStatus: dailyUpdateStatus(u.id, state.updates, state.absences, now, u) }

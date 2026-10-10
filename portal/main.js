@@ -4,14 +4,18 @@ import './styles.css'
 import './brand.css'
 import './analytics-charts.css'
 import './ui.css'
+import './profile-glimpse.css'
+import './photo-crop.css'
 import { portalBrand } from './brand.mjs'
 import { employeeChart, trendChart as renderTrendChart } from './analytics-charts.mjs'
 import { analyticsPresetFilters } from './analytics-filters.mjs'
 import { parseJsonResponse } from './http.mjs'
 import { dailyStatusDisplay } from './daily-status.mjs'
 import { sortTasks, taskStateClass } from './task-presentation.mjs'
-import { PHOTO_SIZES, preparePhoto, savedPhotoFile } from './photo.mjs'
+import { preparePhoto, savedPhotoFile } from './photo.mjs'
+import { cropPhoto } from './photo-crop-dialog.mjs'
 import { serverOffset, todayLoginExpired } from './today-login.mjs'
+import { profileName, installProfileGlimpses } from './profile-glimpse.mjs'
 
 const root = document.querySelector('#app')
 const API = '/api/portal'
@@ -26,7 +30,7 @@ const state = {
   navScrollTop: 0,
   photo: undefined,
   photoFile: null,
-  photoSize: 128,
+  photoCrop: { zoom: 1, x: 0.5, y: 0.5 },
   photoNotice: '',
   photoBusy: false,
   photoToken: 0,
@@ -39,12 +43,19 @@ const state = {
   message: '',
   error: '',
 }
+let photoCropController = null
 const esc = (value) =>
   String(value ?? '').replace(
     /[&<>"']/g,
     (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char],
   )
 const arr = (value) => (Array.isArray(value) ? value : [])
+const profileFor = (id) => arr(state.snapshot?.profileGlimpses).find((person) => String(person.id) === String(id))
+const personName = (person, fallback = '') => {
+  const visible = person && profileFor(person.id)
+  return visible ? profileName(visible.id, visible.name) : esc(fallback)
+}
+const glimpses = installProfileGlimpses({ root, getProfiles: () => arr(state.snapshot?.profileGlimpses) })
 const admin = () => state.user?.role === 'Admin'
 const adminViews = ['team', 'clients', 'admin-tasks', 'reviews', 'notes', 'analytics']
 const permittedView = (name) => (!admin() && adminViews.includes(name) ? 'dashboard' : name)
@@ -137,9 +148,11 @@ const photoAvatar = (user, className, alt = '') => {
     : `<span class="${className}" ${alt ? `role="img" aria-label="${esc(alt)}"` : 'aria-hidden="true"'}>${esc(initials)}</span>`
 }
 const clearPendingPhoto = () => {
+  photoCropController?.abort()
+  photoCropController = null
   state.photo = undefined
   state.photoFile = null
-  state.photoSize = 128
+  state.photoCrop = { zoom: 1, x: 0.5, y: 0.5 }
   state.photoNotice = ''
   state.photoBusy = false
   state.photoToken++
@@ -184,6 +197,7 @@ async function request(path, options = {}) {
       path !== '/register'
     ) {
       clearPendingPhoto()
+      glimpses.close()
       state.user = null
       state.csrf = ''
       state.snapshot = null
@@ -210,6 +224,7 @@ async function load() {
   return true
 }
 function flash(text, failure = false) {
+  if (failure) glimpses.close()
   if (!state.user && document.querySelector('.auth') && state.error === 'Your session expired. Please sign in again.')
     return
   state.message = failure ? '' : text
@@ -234,18 +249,22 @@ function scene() {
 }
 
 function login() {
+  glimpses.close()
   root.innerHTML = `<main class="auth"><div class="auth-card">${portalBrand()}<p class="eyebrow">Private workspace</p><h1>Welcome back.</h1><p class="muted">Sign in with your approved email address.</p><div id="feedback" class="feedback ${state.error ? 'error' : ''}" role="alert" tabindex="-1">${esc(state.error)}</div><form data-form="login">${input('email', 'Email address', 'email', '', 'required autocomplete="username"')}${input('password', 'Portal password', 'password', '', 'required autocomplete="current-password"')}<button class="show-pass" type="button" data-action="show-password" aria-label="Show password" aria-pressed="false">Show password</button><button class="primary full" type="submit">Sign in</button></form><button class="text-button" type="button" data-action="register">Register / request access</button><p class="fine">New accounts require administrator approval before sign-in.</p></div></main>`
 }
 function register() {
+  glimpses.close()
   state.error = ''
   root.innerHTML = `<main class="auth"><div class="auth-card">${portalBrand()}<p class="eyebrow">Request access</p><h1>Register for the workspace</h1><p class="muted">An administrator will review your request before you can sign in.</p><div id="feedback" class="feedback" role="alert" tabindex="-1"></div><form data-form="register">${input('name', 'Full name', 'text', '', 'required autocomplete="name"')}${input('designation', 'Designation', 'text', '', 'required')}${input('email', 'Email address', 'email', '', 'required autocomplete="email"')}${input('password', 'Password (at least 12 characters)', 'password', '', 'required minlength="12" autocomplete="new-password"')}${input('confirmation', 'Confirm password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button class="primary full" type="submit">Request access</button></form><button class="text-button" type="button" data-action="sign-in">Back to sign in</button></div></main>`
   root.querySelector('[name="name"]')?.focus()
 }
 function registrationConfirmation(message) {
+  glimpses.close()
   root.innerHTML = `<main class="auth"><div class="auth-card">${portalBrand()}<p class="eyebrow">Request sent</p><h1 tabindex="-1">Wait for administrator approval</h1><p class="muted">${esc(message || 'Your registration request was received. You can sign in after an administrator approves it.')}</p><button class="text-button" type="button" data-action="sign-in">Back to sign in</button></div></main>`
   root.querySelector('h1')?.focus()
 }
 function changePassword() {
+  glimpses.close()
   root.innerHTML = `<main class="auth"><div class="auth-card">${portalBrand()}<p class="eyebrow">Account security</p><h1>Set a new password</h1><p class="muted">Your temporary password must be changed before opening the workspace. Current password means the temporary password you used to sign in.</p><div id="feedback" class="feedback" role="alert" tabindex="-1"></div><form data-form="password">${input('currentPassword', 'Current password', 'password', '', 'required autocomplete="current-password"')}${input('newPassword', 'New password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button class="primary full" type="submit">Update password</button></form><button class="text-button" type="button" data-action="logout">Sign out</button></div></main>`
 }
 function navigation() {
@@ -268,7 +287,7 @@ function navigation() {
         ]
       : []),
   ]
-  return `<aside class="sidebar ${state.drawer ? 'open' : ''}" id="sidebar" aria-label="Workspace menu"><div class="side-brand">${portalBrand('sidebar')}<button class="side-close" type="button" data-action="drawer" aria-label="Close menu">${svgIcon('close')}</button></div><nav aria-label="Workspace">${nav.map(([key, title]) => `<a href="#${key}" class="${state.view === key ? 'active' : ''}" ${state.view === key ? 'aria-current="page"' : ''}>${title}</a>`).join('')}</nav><div class="side-foot"><span>${esc(state.user.name)}</span><small>${esc(state.user.role)}</small>${btn('Sign out', 'logout', '', 'quiet')}</div></aside>`
+  return `<aside class="sidebar ${state.drawer ? 'open' : ''}" id="sidebar" aria-label="Workspace menu"><div class="side-brand">${portalBrand('sidebar')}<button class="side-close" type="button" data-action="drawer" aria-label="Close menu">${svgIcon('close')}</button></div><nav aria-label="Workspace">${nav.map(([key, title]) => `<a href="#${key}" class="${state.view === key ? 'active' : ''}" ${state.view === key ? 'aria-current="page"' : ''}>${title}</a>`).join('')}</nav><div class="side-foot"><span>${personName(state.user, state.user.name)}</span><small>${esc(state.user.role)}</small>${btn('Sign out', 'logout', '', 'quiet')}</div></aside>`
 }
 function shell() {
   const previousNav = document.querySelector('#sidebar nav')
@@ -290,7 +309,8 @@ function shell() {
     analytics: analyticsView,
   }
   content = (views[state.view] || dashboard)()
-  root.innerHTML = `<a class="skip-link" href="#main">Skip to content</a><div class="layout">${navigation()}<div class="scrim ${state.drawer ? 'visible' : ''}" data-action="drawer"></div><div class="work"><header class="topbar"><button type="button" class="menu" data-action="drawer" aria-controls="sidebar" aria-label="Open menu" aria-expanded="${state.drawer}">${svgIcon('menu')}</button><div class="topbar-context"><span class="eyebrow">Adplix Media / ${esc(state.view.replaceAll('-', ' '))}</span><p>${esc(state.snapshot?.today || '')}</p></div><div class="identity">${photoAvatar(state.user, 'identity-avatar')}<div class="identity-copy"><strong>${esc(state.user.name)}</strong><div class="identity-meta"><span>${esc(state.user.role)}</span><span>${esc(state.user.designation || 'Unassigned')}</span></div></div></div>${btn('Refresh', 'refresh', '', 'refresh-control')}</header><main id="main" class="content" tabindex="-1"><div id="feedback" class="feedback ${state.error ? 'error' : state.message ? 'success' : ''}" role="alert" tabindex="-1">${esc(state.error || state.message)}</div>${content}</main></div></div><dialog id="modal" aria-labelledby="modal-title"><div id="modal-body"></div><button class="dialog-close" type="button" data-action="close-modal" aria-label="Close dialog">${svgIcon('close')}</button></dialog>`
+  root.innerHTML = `<a class="skip-link" href="#main">Skip to content</a><div class="layout">${navigation()}<div class="scrim ${state.drawer ? 'visible' : ''}" data-action="drawer"></div><div class="work"><header class="topbar"><button type="button" class="menu" data-action="drawer" aria-controls="sidebar" aria-label="Open menu" aria-expanded="${state.drawer}">${svgIcon('menu')}</button><div class="topbar-context"><span class="eyebrow">Adplix Media / ${esc(state.view.replaceAll('-', ' '))}</span><p>${esc(state.snapshot?.today || '')}</p></div><div class="identity">${photoAvatar(state.user, 'identity-avatar')}<div class="identity-copy"><strong>${personName(state.user, state.user.name)}</strong><div class="identity-meta"><span>${esc(state.user.role)}</span><span>${esc(state.user.designation || 'Unassigned')}</span></div></div></div>${btn('Refresh', 'refresh', '', 'refresh-control')}</header><main id="main" class="content" tabindex="-1"><div id="feedback" class="feedback ${state.error ? 'error' : state.message ? 'success' : ''}" role="alert" tabindex="-1">${esc(state.error || state.message)}</div>${content}</main></div></div><dialog id="modal" aria-labelledby="modal-title"><div id="modal-body"></div><button class="dialog-close" type="button" data-action="close-modal" aria-label="Close dialog">${svgIcon('close')}</button></dialog>`
+  glimpses.sync()
   syncDailyStatuses(state.snapshot)
   const sidebar = document.querySelector('#sidebar')
   sidebar.querySelector('nav').scrollTop = state.navScrollTop
@@ -332,7 +352,7 @@ function taskCard(task, readonly = false) {
     ? `<div class="task-rating" aria-label="Rating ${esc(task.rating)} out of 5">★ ${esc(task.rating)}/5${task.ratingNote ? ` · ${esc(task.ratingNote)}` : ''}</div>`
     : ''
   const tone = taskStateClass(task)
-  return `<article class="task-card ${tone} ${overdue ? 'overdue' : ''}" data-task-id="${esc(task.id)}"><div class="task-top"><span class="eyebrow">${esc(task.jobFunction || 'Task')} · ${esc(client?.name || 'No client')}</span><span class="tag ${tone}">${esc(task.state || 'Pending')}</span></div><h3>${esc(task.title)}</h3>${task.description ? `<p>${esc(task.description)}</p>` : ''}<div class="task-meta"><span><strong class="overdue-label" ${overdue ? '' : 'hidden'}>Overdue · </strong>Due ${fmtDateTime(task.deadline)}</span><span class="task-duration">Working time ${duration(task.workSeconds)}</span>${readonly || admin() ? `<span>${esc(person?.name || 'Former employee')}</span>` : ''}</div>${rating}${actions ? `<div class="actions">${actions}</div>` : ''}</article>`
+  return `<article class="task-card ${tone} ${overdue ? 'overdue' : ''}" data-task-id="${esc(task.id)}"><div class="task-top"><span class="eyebrow">${esc(task.jobFunction || 'Task')} · ${esc(client?.name || 'No client')}</span><span class="tag ${tone}">${esc(task.state || 'Pending')}</span></div><h3>${esc(task.title)}</h3>${task.description ? `<p>${esc(task.description)}</p>` : ''}<div class="task-meta"><span><strong class="overdue-label" ${overdue ? '' : 'hidden'}>Overdue · </strong>Due ${fmtDateTime(task.deadline)}</span><span class="task-duration">Working time ${duration(task.workSeconds)}</span>${readonly || admin() || mine ? `<span>${personName(person, 'Former employee')}</span>` : ''}</div>${rating}${actions ? `<div class="actions">${actions}</div>` : ''}</article>`
 }
 function dashboard() {
   const s = state.snapshot,
@@ -375,7 +395,7 @@ function dashboard() {
             .filter((e) => e.active && e.role === 'Employee')
             .map((e) => {
               const u = arr(s.updates).find((x) => x.date === s.today && x.employeeId === e.id)
-              return `<div class="list-item" data-update-employee="${esc(e.id)}"><div class="split"><strong>${esc(e.name)}</strong>${statusTag(e.updateStatus?.status || (u ? 'Submitted' : 'Pending'))}</div><p class="update-text">${u ? esc(u.text) : 'No update submitted yet.'}</p></div>`
+              return `<div class="list-item" data-update-employee="${esc(e.id)}"><div class="split"><strong>${personName(e, e.name)}</strong>${statusTag(e.updateStatus?.status || (u ? 'Submitted' : 'Pending'))}</div><p class="update-text">${u ? esc(u.text) : 'No update submitted yet.'}</p></div>`
             })
             .join('') || empty('No active employees.'),
         )
@@ -383,7 +403,10 @@ function dashboard() {
     'Notes',
     arr(s.notes)
       .slice(0, 5)
-      .map((n) => `<div class="list-item"><p>${esc(n.text)}</p><small>${date(n.createdAt)}</small></div>`)
+      .map((n) => {
+        const author = profileFor(n.authorId)
+        return `<div class="list-item"><p>${esc(n.text)}</p><small>${author ? `${personName(author)} · ` : ''}${date(n.createdAt)}</small></div>`
+      })
       .join('') || empty('No notes yet.'),
   )}</div></div>`
 }
@@ -413,7 +436,10 @@ function requests() {
     arr(s.absences)
       .map(
         (a) =>
-          `<div class="list-item"><div class="split"><strong>${esc(a.kind === 'leave' ? 'Leave' : 'Hourly permission')} · ${esc(arr(s.employees).find((e) => e.id === a.employeeId)?.name || 'You')}</strong>${statusTag(a.status)}</div><p>${esc(a.kind === 'leave' ? `${a.start} — ${a.end}` : `${fmtDateTime(a.start)} — ${fmtDateTime(a.end)}`)}</p><p>${esc(a.reason)}</p>${a.decisionNote ? `<p class="muted">Decision: ${esc(a.decisionNote)}</p>` : ''}${admin() && a.status === 'Pending' ? `<div class="actions">${btn('Approve', 'absence-approve', a.id, 'small primary')}${btn('Reject', 'absence-reject', a.id, 'small')}</div>` : ''}</div>`,
+          `<div class="list-item"><div class="split"><strong>${esc(a.kind === 'leave' ? 'Leave' : 'Hourly permission')} · ${personName(
+            arr(s.employees).find((e) => e.id === a.employeeId),
+            'You',
+          )}</strong>${statusTag(a.status)}</div><p>${esc(a.kind === 'leave' ? `${a.start} — ${a.end}` : `${fmtDateTime(a.start)} — ${fmtDateTime(a.end)}`)}</p><p>${esc(a.reason)}</p>${a.decisionNote ? `<p class="muted">Decision: ${esc(a.decisionNote)}</p>` : ''}${admin() && a.status === 'Pending' ? `<div class="actions">${btn('Approve', 'absence-approve', a.id, 'small primary')}${btn('Reject', 'absence-reject', a.id, 'small')}</div>` : ''}</div>`,
       )
       .join('') || empty('No requests yet.'),
   )}</div><div>${!admin() ? section('Request leave', `<form data-form="absence-leave">${input('start', 'First day', 'date', '', 'required')}${input('end', 'Last day', 'date', '', 'required')}${area('reason', 'Reason', '', 'required rows="3"')}<button class="primary" type="submit">Send leave request</button></form>`) + section('Request hourly permission', `<form data-form="absence-permission">${input('date', 'Date', 'date', '', 'required')}${input('startTime', 'From', 'time', '', 'required')}${input('endTime', 'To', 'time', '', 'required')}${area('reason', 'Reason', '', 'required rows="3"')}<button class="primary" type="submit">Send permission request</button></form>`) : section('Decisions', '<p class="muted">Approvals update eligible task working time. Deadlines change only when adjusted explicitly.</p>')}</div></div>`
@@ -458,6 +484,7 @@ function eventForm(event) {
 function profile() {
   const p = state.user.profile || {}
   const displayed = state.photo === undefined ? p.photoDataUrl : state.photo
+  const hasCropSource = Boolean(state.photoFile || p.photoDataUrl)
   const preview = photoAvatar(
     { ...state.user, profile: { ...p, photoDataUrl: displayed } },
     'profile-photo-preview',
@@ -466,33 +493,28 @@ function profile() {
   const controls = `<div class="profile-photo">${preview}<div class="photo-controls">
     <label for="profile-photo-input">Choose a profile photo</label>
     <input id="profile-photo-input" type="file" accept="image/png,image/jpeg,image/webp" ${state.photoBusy ? 'disabled' : ''} aria-describedby="profile-photo-hint">
-    <p class="fine" id="profile-photo-hint">PNG, JPEG or WebP, up to 5 MiB. Photos are centre-cropped to a square and displayed in a circle.</p>
-    <div class="photo-resize-field"><label for="profile-photo-size">Resize to</label>
-      <select id="profile-photo-size" ${state.photoBusy ? 'disabled' : ''} aria-describedby="profile-photo-size-hint"><option value="" disabled ${state.photo === undefined && displayed ? 'selected' : ''}>Choose a size</option>${PHOTO_SIZES.map((size) => `<option value="${size}" ${!(state.photo === undefined && displayed) && state.photoSize === size ? 'selected' : ''}>${size} × ${size} px${size === 128 ? ' (recommended)' : ''}</option>`).join('')}</select>
-      <p class="fine" id="profile-photo-size-hint">Choose the saved image size. Preview changes here, then select Save photo to apply.</p>
-    </div>
+     <p class="fine" id="profile-photo-hint">PNG, JPEG or WebP, up to 5 MiB. Drag to position and zoom in the crop dialog, then save your 128 × 128 px photo.</p>
+     ${btn('Edit photo', 'photo-edit', '', 'small').replace('<button ', `<button ${!hasCropSource || state.photoBusy ? 'disabled' : ''} `)}
     <p class="fine" id="profile-photo-status" role="status" aria-live="polite">${esc(photoStatus())}</p>
     <div class="actions">${btn('Save photo', 'photo-save', '', 'small primary').replace('<button ', `<button ${state.photo === undefined || state.photoBusy ? 'disabled' : ''} `)}${btn('Remove photo', 'photo-remove', '', 'small').replace('<button ', `<button ${!displayed || state.photoBusy ? 'disabled' : ''} `)}${btn('Cancel changes', 'photo-cancel', '', 'small').replace('<button ', `<button ${state.photo === undefined || state.photoBusy ? 'disabled' : ''} `)}</div>
   </div></div>`
-  return `<div class="page-heading"><div><p class="eyebrow">Account</p><h1>My profile</h1><p class="muted">${esc(state.user.name)} · ${esc(state.user.employeeId)} · ${esc(state.user.email)}</p></div></div><div class="grid"><div>${section('Photo', controls)}${section('Details', `<form data-form="profile">${input('designation', 'Designation', 'text', state.user.designation || '', 'required')}${input('phone', 'Phone (optional)', 'tel', p.phone || '')}${area('bio', 'About (optional)', p.bio || '', 'rows="4"')}<button class="primary" type="submit">Save profile</button></form>`)}</div><div>${section('Password', `<form data-form="password">${input('currentPassword', 'Current password', 'password', '', 'required autocomplete="current-password"')}${input('newPassword', 'New password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button type="submit">Change password</button></form>`)}</div></div>`
+  return `<div class="page-heading"><div><p class="eyebrow">Account</p><h1>My profile</h1><p class="muted">${personName(state.user, state.user.name)} · ${esc(state.user.employeeId)} · ${esc(state.user.email)}</p></div></div><div class="grid"><div>${section('Photo', controls)}${section('Details', `<form data-form="profile">${input('designation', 'Designation', 'text', state.user.designation || '', 'required')}${input('phone', 'Phone (optional)', 'tel', p.phone || '')}${area('bio', 'About (optional)', p.bio || '', 'rows="4"')}<button class="primary" type="submit">Save profile</button></form>`)}</div><div>${section('Password', `<form data-form="password">${input('currentPassword', 'Current password', 'password', '', 'required autocomplete="current-password"')}${input('newPassword', 'New password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button type="submit">Change password</button></form>`)}</div></div>`
 }
 function photoStatus() {
   if (state.photoNotice) return state.photoNotice
-  if (state.photo !== undefined) return `Preview: ${state.photoSize} × ${state.photoSize} px. Not saved yet.`
-  return state.user?.profile?.photoDataUrl
-    ? 'Saved photo. Choose a size to prepare a resized copy.'
-    : 'No photo selected yet.'
+  if (state.photo !== undefined) return 'Preview: 128 × 128 px. Not saved yet.'
+  return state.user?.profile?.photoDataUrl ? 'Saved photo. Edit photo to prepare a new crop.' : 'No photo selected yet.'
 }
 function syncPhotoControls() {
   const controls = document.querySelector('.photo-controls')
   if (!controls || state.view !== 'profile') return
   const busy = state.photoBusy || state.busy
   controls.setAttribute('aria-busy', String(busy))
-  controls.querySelectorAll('input,select').forEach((control) => {
+  controls.querySelectorAll('input').forEach((control) => {
     control.disabled = busy
   })
-  controls.querySelector('#profile-photo-size').value =
-    state.photo === undefined && state.user.profile?.photoDataUrl ? '' : String(state.photoSize)
+  controls.querySelector('[data-action="photo-edit"]').disabled =
+    busy || !(state.photoFile || state.user.profile?.photoDataUrl)
   controls.querySelector('[data-action="photo-save"]').disabled = busy || state.photo === undefined
   controls.querySelector('[data-action="photo-cancel"]').disabled = busy || state.photo === undefined
   controls.querySelector('[data-action="photo-remove"]').disabled =
@@ -507,37 +529,54 @@ function syncPhotoControls() {
       `Profile photo of ${state.user.name}`,
     )
 }
-async function stagePhoto(file, size) {
+function photoSource() {
+  return state.photoFile || (state.user.profile?.photoDataUrl ? savedPhotoFile(state.user.profile.photoDataUrl) : null)
+}
+async function stagePhoto(file, crop = { zoom: 1, x: 0.5, y: 0.5 }) {
   if (state.view !== 'profile' || state.photoBusy || state.busy) return
   const token = ++state.photoToken,
     user = state.user.id,
     csrf = state.csrf
-  const focused = document.querySelector('.photo-controls')?.contains(document.activeElement)
-    ? document.activeElement.id
-    : ''
+  const controller = new AbortController()
+  photoCropController = controller
+  const focusTarget = document.activeElement
+  const previousNotice = state.photoNotice
   const isCurrent = () =>
-    state.photoToken === token && state.user?.id === user && state.csrf === csrf && state.view === 'profile'
+    !controller.signal.aborted &&
+    state.photoToken === token &&
+    state.user?.id === user &&
+    state.csrf === csrf &&
+    state.view === 'profile'
   state.photoBusy = true
-  state.photoNotice = 'Preparing photo…'
+  state.photoNotice = 'Position your photo in the crop dialog.'
   syncPhotoControls()
   try {
-    const photo = await preparePhoto(file, size)
+    const selected = await cropPhoto(file, { crop, restoreFocus: null, signal: controller.signal })
+    if (!isCurrent()) return
+    if (!selected) {
+      state.photoNotice = previousNotice
+      return
+    }
+    state.photoNotice = 'Preparing photo…'
+    syncPhotoControls()
+    const photo = await preparePhoto(file, 128, selected)
     if (!isCurrent()) return
     state.photo = photo
-    // Keep the original input so switching sizes never compounds JPEG loss.
+    // Retain the upload while staged, so editing it again does not compound JPEG loss.
     state.photoFile = file
-    state.photoSize = size
-    state.photoNotice = `Preview: ${size} × ${size} px. Not saved yet.`
+    state.photoCrop = { ...selected }
+    state.photoNotice = 'Preview: 128 × 128 px. Not saved yet.'
   } catch (error) {
     if (isCurrent()) state.photoNotice = error.message
   } finally {
     if (isCurrent()) {
+      photoCropController = null
       state.photoBusy = false
       const input = document.querySelector('#profile-photo-input')
       if (input) input.value = ''
       syncPhotoControls()
-      if (focused && document.activeElement === document.body)
-        document.getElementById(focused)?.focus({ preventScroll: true })
+      if (focusTarget?.isConnected && document.activeElement === document.body)
+        focusTarget.focus({ preventScroll: true })
     }
   }
 }
@@ -553,7 +592,7 @@ function adminAccounts() {
   const accounts = arr(state.snapshot.employees).filter((e) => e.role === 'Admin')
   return section(
     'Admin accounts',
-    `<p class="muted admin-account-note">Manage administrator access separately from employee job functions. The server prevents deactivating the final active Admin.</p>${adminForm()}<div class="admin-account-list">${accounts.map((account) => `<div class="list-item"><div class="split"><div><strong>${esc(account.name)}</strong><p>${esc(account.designation || 'Admin')} · ${esc(account.employeeId)} · ${esc(account.email || 'Email private')}</p></div>${statusTag(account.active ? 'Active' : 'Inactive')}</div>${account.active ? `<div class="actions">${btn('Edit designation', 'designation-edit', account.id, 'small')}${btn('Deactivate', 'admin-deactivate', account.id, 'small danger')}</div>` : ''}</div>`).join('') || empty('No admin accounts yet.')}</div>`,
+    `<p class="muted admin-account-note">Manage administrator access separately from employee job functions. The server prevents deactivating the final active Admin.</p>${adminForm()}<div class="admin-account-list">${accounts.map((account) => `<div class="list-item"><div class="split"><div><strong>${personName(account, account.name)}</strong><p>${esc(account.designation || 'Admin')} · ${esc(account.employeeId)} · ${esc(account.email || 'Email private')}</p></div>${statusTag(account.active ? 'Active' : 'Inactive')}</div>${account.active ? `<div class="actions">${btn('Edit designation', 'designation-edit', account.id, 'small')}${btn('Deactivate', 'admin-deactivate', account.id, 'small danger')}</div>` : ''}</div>`).join('') || empty('No admin accounts yet.')}</div>`,
   )
 }
 function team() {
@@ -565,7 +604,7 @@ function team() {
       .filter((e) => e.role !== 'Admin')
       .map(
         (e) =>
-          `<div class="list-item"><div class="split"><div><strong>${esc(e.name)}</strong><p>${esc(e.designation || 'Employee')} · ${esc(e.employeeId)} · ${esc(e.email || 'Email private')}</p><small>${esc(arr(e.jobFunctions).join(' · ') || 'No job functions')}</small></div>${statusTag(e.active ? 'Active' : 'Inactive')}</div>${e.active ? `<div class="actions">${btn('Edit', 'employee-edit', e.id, 'small')}${btn('Reset password', 'employee-reset', e.id, 'small')}${btn('Deactivate', 'employee-deactivate', e.id, 'small danger')}</div>` : ''}</div>`,
+          `<div class="list-item"><div class="split"><div><strong>${personName(e, e.name)}</strong><p>${esc(e.designation || 'Employee')} · ${esc(e.employeeId)} · ${esc(e.email || 'Email private')}</p><small>${esc(arr(e.jobFunctions).join(' · ') || 'No job functions')}</small></div>${statusTag(e.active ? 'Active' : 'Inactive')}</div>${e.active ? `<div class="actions">${btn('Edit', 'employee-edit', e.id, 'small')}${btn('Reset password', 'employee-reset', e.id, 'small')}${btn('Deactivate', 'employee-deactivate', e.id, 'small danger')}</div>` : ''}</div>`,
       )
       .join('') || empty('No employees yet.'),
   )}${adminAccounts()}`
@@ -623,7 +662,7 @@ function notes() {
     arr(state.snapshot.notes)
       .map(
         (n) =>
-          `<div class="list-item"><p>${esc(n.text)}</p><small>${fmtDateTime(n.createdAt)} · ${n.recipientIds?.length ? `${n.recipientIds.length} selected` : 'Everyone'}</small><div class="actions">${btn('Delete note', 'note-delete', n.id, 'small danger')}</div></div>`,
+          `<div class="list-item"><p>${esc(n.text)}</p><small>${profileFor(n.authorId) ? `${personName(profileFor(n.authorId))} · ` : ''}${fmtDateTime(n.createdAt)} · ${n.recipientIds?.length ? `${n.recipientIds.length} selected` : 'Everyone'}</small><div class="actions">${btn('Delete note', 'note-delete', n.id, 'small danger')}</div></div>`,
       )
       .join('') || empty('No notes yet.'),
   )}`
@@ -657,9 +696,13 @@ function analyticsView() {
           ? `Custom range: ${f.from || '—'} to ${f.to || '—'}`
           : 'All time'
   const scope = [
-    f.employeeId && `Team member: ${emp.find((e) => String(e.id) === String(f.employeeId))?.name || f.employeeId}`,
-    f.clientId && `Client: ${cli.find((c) => String(c.id) === String(f.clientId))?.name || f.clientId}`,
-    f.jobFunction && `Function: ${f.jobFunction}`,
+    f.employeeId &&
+      `Team member: ${personName(
+        emp.find((e) => String(e.id) === String(f.employeeId)),
+        f.employeeId,
+      )}`,
+    f.clientId && `Client: ${esc(cli.find((c) => String(c.id) === String(f.clientId))?.name || f.clientId)}`,
+    f.jobFunction && `Function: ${esc(f.jobFunction)}`,
   ]
     .filter(Boolean)
     .join(' · ')
@@ -676,7 +719,7 @@ function analyticsView() {
       jobFunctions.map((j) => ({ id: j, name: j })),
       f.jobFunction,
       'All functions',
-    )}</select></label></div><p class="fine" aria-live="polite">${esc(label)}${scope ? ` · ${esc(scope)}` : ''}</p><div class="actions"><button class="primary" type="submit">Apply filters</button>${btn('Download Excel', 'export', '', 'small')}</div></form>`,
+    )}</select></label></div><p class="fine" aria-live="polite">${esc(label)}${scope ? ` · ${scope}` : ''}</p><div class="actions"><button class="primary" type="submit">Apply filters</button>${btn('Download Excel', 'export', '', 'small')}</div></form>`,
   )}${
     a
       ? section(
@@ -691,7 +734,7 @@ function analyticsView() {
             .join('')}</div>`,
         )
       : empty('No report loaded yet. Apply filters to view saved records.')
-  }${a ? section('Completed work over time', `${analyticsQuickFilters()}${hasTimeline ? trendChart(arr(a.trend)) : empty('No completions in this range.')}`) : ''}${a ? section('Team attendance & work', arr(a.employees).length ? employeeChart(a.employees) : empty('No team member records for these filters.')) : ''}`
+  }${a ? section('Completed work over time', `${analyticsQuickFilters()}${hasTimeline ? trendChart(arr(a.trend)) : empty('No completions in this range.')}`) : ''}${a ? section('Team attendance & work', arr(a.employees).length ? employeeChart(a.employees, (person) => personName(profileFor(person.id), person.name)) : empty('No team member records for these filters.')) : ''}`
 }
 
 let priorFocus
@@ -896,6 +939,7 @@ async function pollSnapshot() {
       }
     })
     syncTaskOrder(snapshot)
+    glimpses.sync()
     syncDailyStatuses(snapshot)
     syncTodayAttendance()
     if (state.view === 'analytics' && !state.busy && !document.querySelector('#modal:open'))
@@ -1040,6 +1084,17 @@ async function handleAction(button) {
     document.querySelector('#profile-photo-input')?.focus()
     return
   }
+  if (action === 'photo-edit') {
+    if (state.view !== 'profile' || state.photoBusy || state.busy) return
+    try {
+      const source = photoSource()
+      if (source) stagePhoto(source, state.photoFile ? state.photoCrop : { zoom: 1, x: 0.5, y: 0.5 })
+    } catch (error) {
+      state.photoNotice = error.message
+      syncPhotoControls()
+    }
+    return
+  }
   if (action === 'photo-remove' || action === 'photo-save') {
     if (state.view !== 'profile' || state.photoBusy || state.busy) return
     const photo = action === 'photo-remove' ? null : state.photo
@@ -1057,6 +1112,9 @@ async function handleAction(button) {
       if (!isCurrent()) return
       state.user.profile = { ...state.user.profile, photoDataUrl: photo }
       if (state.snapshot?.user) state.snapshot.user.profile = state.user.profile
+      const selfGlimpse = profileFor(user)
+      if (selfGlimpse) selfGlimpse.photoDataUrl = photo
+      glimpses.sync()
       clearPendingPhoto()
       state.photoNotice = action === 'photo-remove' ? 'Profile photo removed.' : 'Profile photo saved.'
       syncPhotoControls()
@@ -1130,6 +1188,7 @@ async function handleAction(button) {
   }
   if (action === 'logout') {
     button.disabled = true
+    glimpses.close()
     try {
       await post('/logout', {})
       clearPendingPhoto()
@@ -1682,26 +1741,7 @@ root.addEventListener('click', (e) => {
 root.addEventListener('change', (e) => {
   if (e.target.id === 'profile-photo-input') {
     const file = e.target.files?.[0]
-    if (file) stagePhoto(file, state.photoSize)
-    return
-  }
-  if (e.target.id === 'profile-photo-size') {
-    if (state.view !== 'profile' || state.photoBusy || state.busy) return
-    const size = Number(e.target.value)
-    if (!PHOTO_SIZES.includes(size)) return
-    try {
-      const source =
-        state.photoFile || (state.user.profile?.photoDataUrl ? savedPhotoFile(state.user.profile.photoDataUrl) : null)
-      if (source) stagePhoto(source, size)
-      else {
-        state.photoSize = size
-        state.photoNotice = `Choose a photo to resize to ${size} × ${size} px.`
-        syncPhotoControls()
-      }
-    } catch (error) {
-      state.photoNotice = error.message
-      syncPhotoControls()
-    }
+    if (file) stagePhoto(file)
     return
   }
   if (e.target.matches('form[data-form="task"] [name="assigneeId"]')) {
@@ -1752,6 +1792,7 @@ root.addEventListener(
 )
 window.addEventListener('hashchange', () => {
   if (!state.user || state.user.mustChangePassword || !state.snapshot) return
+  glimpses.close()
   const view = permittedView(location.hash.slice(1) || 'dashboard')
   if (state.drawer) setDrawer(false, false)
   clearPendingPhoto()

@@ -22,11 +22,12 @@ Bootstrap is a local/explicit operator script producing a D1 insert with a passw
 
 ## Snapshot
 
-`{user,employees,clients,tasks,updates,absences,notes,notifications,serverNow,today,updateStatus}`
+`{user,employees,profileGlimpses,clients,tasks,updates,absences,notes,notifications,serverNow,today,updateStatus}`
 
 Admin snapshots additionally contain `registrations:[{id,name,email,status,createdAt,decidedAt,employeeId}]`. No password hashes; Employee snapshots omit this field entirely. Legacy states without registrations remain compatible.
 
 - employee `{id,name,employeeId,email?,role,jobFunctions:[],active,profile?}`; employee-visible list excludes private fields.
+- profile glimpse `{id,name,role,designation,jobFunctions:[],active,photoDataUrl:null|string}`. This dedicated whitelist is derived only from the existing visible employee list: Admins can preview their permitted Admin/Employee accounts, including inactive accounts; Employees can preview active Employees only. It contains no email, employee identifier, phone, bio, password hash, credential version or full profile object. Only structurally valid stored baseline JPEGs are returned; absent/malformed legacy photos are null. No public profile lookup endpoint is added.
 - client `{id,name,service,active}`.
 - task `{id,title,description,assigneeId,clientId,jobFunction,deadline,priority,state,createdAt,updatedAt,completedAt,approvedAt,version,intervals:[{start,end:null|string}],events:[{actorId,from,to,at,reason?,kind}],workSeconds,overdue}`. State labels exactly `Assigned`, `In-progress`, `Completed`, `Approved`.
 - update `{id,employeeId,date,text,submittedAt,editedAt}`; Admin sees team updates; Employee sees own.

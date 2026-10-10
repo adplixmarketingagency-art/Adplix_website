@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MAX_JPEG_BYTES, PHOTO_SIZES, jpegSize, preparePhoto, savedPhotoFile } from '../portal/photo.mjs'
+import { MAX_JPEG_BYTES, PHOTO_SIZES, cropBounds, jpegSize, preparePhoto, savedPhotoFile } from '../portal/photo.mjs'
 
 const jpegHeader = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0])
 const file = (bytes = jpegHeader) => new Blob([bytes], { type: 'image/jpeg' })
@@ -49,6 +49,64 @@ function restoreBrowser() {
   delete globalThis.document
 }
 
+test('cropBounds preserves the center crop and positions zoomed square crops within wide, tall and square images', () => {
+  assert.deepEqual(cropBounds(400, 200), { left: 100, top: 0, side: 200 })
+  assert.deepEqual(cropBounds(180, 300, {}), { left: 0, top: 60, side: 180 })
+  assert.deepEqual(cropBounds(200, 200), { left: 0, top: 0, side: 200 })
+  assert.deepEqual(cropBounds(400, 200, { zoom: 2, x: 0, y: 0 }), { left: 0, top: 0, side: 100 })
+  assert.deepEqual(cropBounds(400, 200, { zoom: 2, x: 1, y: 1 }), { left: 300, top: 100, side: 100 })
+  assert.deepEqual(cropBounds(180, 300, { zoom: 3, x: 1, y: 0 }), { left: 120, top: 0, side: 60 })
+  assert.deepEqual(cropBounds(200, 200, { zoom: 4 }), { left: 75, top: 75, side: 50 })
+  assert.deepEqual(cropBounds(200, 200, { zoom: 2, x: 0.25, y: 0.75 }), {
+    left: 25,
+    top: 75,
+    side: 100,
+  })
+})
+
+test('cropBounds rejects invalid dimensions and malformed crop values without coercion', () => {
+  for (const [width, height] of [
+    [0, 100],
+    [-1, 100],
+    [NaN, 100],
+    [Infinity, 100],
+    ['200', 100],
+    [100, 0],
+    [100, -1],
+    [100, NaN],
+    [100, Infinity],
+    [100, '200'],
+  ]) {
+    assert.throws(() => cropBounds(width, height), /valid dimensions/)
+  }
+  for (const crop of [
+    null,
+    [],
+    'center',
+    2,
+    { zoom: 0 },
+    { zoom: 4.01 },
+    { zoom: NaN },
+    { zoom: Infinity },
+    { zoom: '2' },
+    { x: -0.01 },
+    { x: 1.01 },
+    { x: NaN },
+    { x: -Infinity },
+    { x: '0.5' },
+    { y: -0.01 },
+    { y: 1.01 },
+    { y: NaN },
+    { y: Infinity },
+    { y: '0.5' },
+    { zoom: null },
+    { x: null },
+    { y: null },
+  ]) {
+    assert.throws(() => cropBounds(200, 100, crop), /valid photo crop/)
+  }
+})
+
 test('preparePhoto renders every supported size and center-crops without stretching', async () => {
   const drawCalls = []
   const browser = browserMock({
@@ -72,6 +130,32 @@ test('preparePhoto renders every supported size and center-crops without stretch
         [100, 0, 200, 200, 0, 0, 96, 96],
         [100, 0, 200, 200, 0, 0, 128, 128],
       ],
+    )
+    assert.equal(browser.calls.filter(([name]) => name === 'close').length, PHOTO_SIZES.length)
+  } finally {
+    restoreBrowser()
+  }
+})
+
+test('preparePhoto draws the selected crop at every supported output size', async () => {
+  const drawCalls = []
+  const browser = browserMock({
+    width: 400,
+    height: 200,
+    context: {
+      drawImage(...args) {
+        drawCalls.push(args)
+      },
+    },
+  })
+  try {
+    for (const size of PHOTO_SIZES) {
+      assert.equal(await preparePhoto(file(), size, { zoom: 2, x: 1, y: 1 }), jpegDataUrl())
+      assert.deepEqual([browser.canvas.width, browser.canvas.height], [size, size])
+    }
+    assert.deepEqual(
+      drawCalls.map((call) => call.slice(1)),
+      PHOTO_SIZES.map((size) => [300, 100, 100, 100, 0, 0, size, size]),
     )
     assert.equal(browser.calls.filter(([name]) => name === 'close').length, PHOTO_SIZES.length)
   } finally {
@@ -122,8 +206,47 @@ test('preparePhoto closes a bitmap if drawing fails', async () => {
     },
   })
   try {
-    await assert.rejects(preparePhoto(file()), /Canvas failed/)
+    await assert.rejects(preparePhoto(file(), 96, { zoom: 2, x: 1, y: 0 }), /Canvas failed/)
     assert.deepEqual(browser.calls, [['close']])
+  } finally {
+    restoreBrowser()
+  }
+})
+
+test('preparePhoto rejects invalid crop before reading or decoding the image', async () => {
+  const browser = browserMock({ context: { drawImage() {} } })
+  let reads = 0
+  let decodes = 0
+  const image = file()
+  const slice = image.slice.bind(image)
+  image.slice = (...args) => {
+    reads++
+    return slice(...args)
+  }
+  globalThis.createImageBitmap = async () => {
+    decodes++
+    throw new Error('Should not decode')
+  }
+  try {
+    for (const crop of [
+      null,
+      [],
+      { zoom: 0 },
+      { zoom: 5 },
+      { zoom: NaN },
+      { zoom: '2' },
+      { x: -1 },
+      { x: Infinity },
+      { x: '0.5' },
+      { y: 2 },
+      { y: -Infinity },
+      { y: null },
+    ]) {
+      await assert.rejects(preparePhoto(image, 128, crop), /valid photo crop/)
+    }
+    assert.equal(reads, 0)
+    assert.equal(decodes, 0)
+    assert.equal(browser.canvas, undefined)
   } finally {
     restoreBrowser()
   }

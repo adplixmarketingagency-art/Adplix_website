@@ -1,5 +1,17 @@
 # Employee Portal — Delivery and Setup
 
+## Profile glimpses and gesture photo editing
+
+Authorized team names in task cards, team lists, daily updates, time-off requests, Analytics, visible note authors and the signed-in identity open a compact profile glimpse on hover, keyboard focus or click/tap. The card shows the saved photo (or initials), name, role, designation and work types. Clicking the card's photo opens a larger uncropped view of the saved image. Escape/close restores focus; popups close on navigation/auth changes. Native select options and input values remain plain text.
+
+Snapshot `profileGlimpses` whitelists only team-visible summary fields and validated photos. Employees still cannot preview hidden Admins/inactive peers or access private email, phone or biography fields. Existing full-profile permissions are unchanged; registration requests do not become public profiles.
+
+Both Admins and Employees can choose/edit their own photo in a WhatsApp-style gesture crop dialog: **drag to position, pinch or scroll to zoom**, then **Use photo**. Plus/minus and arrow keys provide keyboard alternatives. No position sliders or pixel-size dropdown remain. Use photo stages a local preview; **Save photo** persists it and **Cancel changes** restores the saved image. The original upload is retained only while staged, preserving quality across repeated edits. Saved photos remain 128 × 128 baseline JPEGs under 12 KiB; enlarging an existing saved image cannot recover its original upload resolution. No original photo is retained remotely, no new external image host is used and the CSP remains unchanged.
+
+Graphify was used locally to trace snapshot/name/profile relationships, then updated after implementation. `.graphifyignore` scopes extraction to portal source and synthetic tests; generated `graphify-out/` is ignored. The AST graph does not cover CSS or several symbol-free tests, and diagnostics reported three self-loop edges; source reads and browser checks supplied the missing validation. No remote semantic extraction or global graph merge was enabled.
+
+Verification: `npm run quality` passed lint, formatting, **136 tests**, marketing browser checks and portal browser checks against isolated local D1/Durable Objects. Browser coverage includes drag, wheel and keyboard zoom/reset, simulated two-pointer pinch, saved/pending photo cancel, failed saves, actual emulated-touch profile opening, enlarged-photo focus return, peer task-name preview, 320-pixel/mobile/landscape layout and axe/CSP checks. `npm run deploy:preview` passed packaging. Screenshots contain only synthetic data in ignored `.portal-local/previews/`, including `admin-gesture-crop-mobile.png` and `admin-profile-glimpse.png`. Pinch tests exercise the handlers and geometry, not a physical-device certification. No production photo/account was changed during testing.
+
 ## Admin in-time and Analytics follow-up
 
 The owner confirmed that production sign-in/password change works and additional Admin accounts were created after the Cloudflare-native release. The account counts and pending-rotation evidence in the previous release section are historical snapshots, not current account inventory.

@@ -60,6 +60,7 @@ export default [
       'scripts/{main,navigation}.js',
       'tests/*.e2e.mjs',
       'tests/portal-photo-browser.mjs',
+      'tests/portal-profile-glimpse-browser.mjs',
     ],
     languageOptions: { globals: globals.browser },
   },

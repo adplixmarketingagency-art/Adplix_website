@@ -1,0 +1,10 @@
+# Local AST context for the employee portal only. Never index private runtime data.
+**
+!src/
+!src/index.js
+!src/portal/
+!src/portal/**
+!portal/
+!portal/**
+!tests/
+!tests/**
