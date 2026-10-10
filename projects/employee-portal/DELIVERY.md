@@ -8,6 +8,8 @@ Login duration now stops at **19:00 IST**. Task working time is calculated Monda
 
 Verification for this combined change: Node 22 `npm test` passed **165 tests**, lint, formatting, `npm run portal:build`, marketing browser checks, portal browser checks and `git diff --check` passed. The SQLite-backed integration suite ran under Node 22; the portal browser suite used isolated local D1 and synthetic accounts. Deployment and the final read-only production verification receipt are recorded in the release line below after publishing.
 
+Release: code commit `39f0c51` was pushed to `main` and deployed as Worker version `dfe0ac25-6f40-4d1e-847b-32caf28b9237`. The Worker origin and, after brief propagation, `https://adplixmedia.in` both passed read-only exact-build, service-worker, manifest/icon and security verification. Reload `/portal/` once to load the updated Analytics and Inbox UI. No production account, profile photo, notification or database record was changed during verification.
+
 ## Admin recipients, account recovery and specific workflow alerts
 
 **Notes & broadcasts** now lists active Admins and Employees with role labels. Select names to target them; no selection sends to all active team roles (including the sending Admin). Recipients get their own unread inbox record and optional device alert, while Admin management access to published notes remains unchanged. Disabled accounts are excluded from new deliveries.
