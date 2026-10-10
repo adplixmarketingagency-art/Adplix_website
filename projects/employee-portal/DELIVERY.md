@@ -12,6 +12,10 @@ Graphify was used locally to trace snapshot/name/profile relationships, then upd
 
 Verification: `npm run quality` passed lint, formatting, **136 tests**, marketing browser checks and portal browser checks against isolated local D1/Durable Objects. Browser coverage includes drag, wheel and keyboard zoom/reset, simulated two-pointer pinch, saved/pending photo cancel, failed saves, actual emulated-touch profile opening, enlarged-photo focus return, peer task-name preview, 320-pixel/mobile/landscape layout and axe/CSP checks. `npm run deploy:preview` passed packaging. Screenshots contain only synthetic data in ignored `.portal-local/previews/`, including `admin-gesture-crop-mobile.png` and `admin-profile-glimpse.png`. Pinch tests exercise the handlers and geometry, not a physical-device certification. No production photo/account was changed during testing.
 
+Release: code commit `a16cf0b` was pushed to `main` and deployed as Worker version `c552bffe-4bf1-4fef-a6ea-dab6fc86ed24`. Read-only `npm run deploy:verify` checks passed for both `https://adplixmedia.in` and `https://withered-pine-ee0b.adplixmarketingagency.workers.dev`, confirming the expected build, routing and security headers without modifying production accounts. No billing change, credential reset or database migration was required. Authenticated production crop/profile interactions and physical-phone pinch behavior still need a private user smoke check.
+
+To try the release, reload `/portal/`, hover/focus or tap a visible team name, and click its photo for the larger view. In your profile, choose a photo, drag to position and pinch/scroll to zoom, select **Use photo**, then **Save photo**. Confirm Cancel leaves the previous image unchanged on your device.
+
 ## Admin in-time and Analytics follow-up
 
 The owner confirmed that production sign-in/password change works and additional Admin accounts were created after the Cloudflare-native release. The account counts and pending-rotation evidence in the previous release section are historical snapshots, not current account inventory.
