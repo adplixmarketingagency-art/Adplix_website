@@ -604,7 +604,12 @@ test('push-test is authenticated, CSRF-protected, bounded, and returns counts wi
     assert.equal((await pushCall(f, env, 'push-test', mine, { target: other.endpoint })).status, 400)
     const result = await pushCall(f, env, 'push-test', mine, {})
     assert.equal(result.status, 200)
-    assert.deepEqual(await result.json(), { sent: 1, failed: 1, skipped: 0 })
+    assert.deepEqual(await result.json(), {
+      sent: 1,
+      failed: 1,
+      skipped: 0,
+      diagnostics: { configuration: 0, preparation: 0, network: 0, timeout: 0, httpStatuses: { 410: 1 } },
+    })
     assert.deepEqual(requests.sort(), [success.endpoint, expired.endpoint].sort())
     assert.deepEqual(
       f.state.subscriptions.map((x) => x.subscription.endpoint).sort(),
@@ -612,6 +617,42 @@ test('push-test is authenticated, CSRF-protected, bounded, and returns counts wi
     )
     for (let i = 0; i < 7; i++) assert.equal((await pushCall(f, env, 'push-test', mine, {})).status, 200)
     assert.equal((await pushCall(f, env, 'push-test', mine, {})).status, 429)
+  } finally {
+    globalThis.fetch = original
+  }
+})
+
+test('push-test returns bounded diagnostics without leaking subscription, exception or provider body', async () => {
+  const f = fixture(people())
+  const { env, keys } = await pushKeys()
+  const headers = asUser(f, f.state.users[1])
+  const invalid = device(keys, 'private-preparation')
+  invalid.keys = { ...keys, p256dh: 'PRIVATE_KEY_SENTINEL' }
+  const rejected = device(keys, 'private-provider')
+  const network = device(keys, 'private-network')
+  f.state.subscriptions.push(
+    ...[invalid, rejected, network].map((subscription) => ({ employeeId: 'employee', subscription })),
+  )
+  const original = globalThis.fetch
+  const requested = []
+  globalThis.fetch = async (url) => {
+    requested.push(url)
+    if (url === rejected.endpoint) return { ok: false, status: 403, body: 'PRIVATE_PROVIDER_BODY' }
+    throw new Error('PRIVATE_NETWORK_EXCEPTION Authorization PRIVATE_TOKEN')
+  }
+  try {
+    const response = await pushCall(f, env, 'push-test', headers, {})
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.deepEqual(body, {
+      sent: 0,
+      failed: 3,
+      skipped: 0,
+      diagnostics: { configuration: 0, preparation: 1, network: 1, timeout: 0, httpStatuses: { 403: 1 } },
+    })
+    assert.deepEqual(requested.sort(), [rejected.endpoint, network.endpoint].sort())
+    for (const privateValue of ['PRIVATE_', 'private-', 'Authorization', env.VAPID_PRIVATE_KEY, env.VAPID_SUBJECT])
+      assert.equal(JSON.stringify(body).includes(privateValue), false)
   } finally {
     globalThis.fetch = original
   }

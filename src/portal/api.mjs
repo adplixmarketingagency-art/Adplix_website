@@ -1098,7 +1098,12 @@ export async function handlePortalApi(request, env, context) {
       // The send is bounded to five owned devices and eight attempts per 15 minutes.
       const result = await sendBroadcastPush(env, subscriptions)
       await cleanExpiredPush(db, result)
-      return response({ sent: result.sent, failed: result.failed, skipped: result.skipped })
+      return response({
+        sent: result.sent,
+        failed: result.failed,
+        skipped: result.skipped,
+        diagnostics: result.diagnostics,
+      })
     }
     return response({ error: 'Not found.' }, 404)
   } catch (error) {

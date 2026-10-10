@@ -1,5 +1,15 @@
 # Employee Portal — Delivery and Setup
 
+## Cross-device push failure: Cloudflare fetch compatibility
+
+The reported test failure on iPhone, Android and desktop was reproduced locally in Cloudflare workerd, not inferred from device settings. Payload preparation, signing and encryption succeeded, but the actual sender failed before contacting its provider: `TypeError: Invalid redirect value, must be one of "follow" or "manual"`. Cloudflare does not implement `redirect:'error'`; the previous Node fetch mocks accepted that option and therefore missed the deployment-runtime failure.
+
+The sender now uses `redirect:'manual'`; non-success/redirect responses are failures and never forward credentials to another host. New workerd/Miniflare regression coverage bundles the actual sender, uses synthetic keys and intercepted outbound requests (no production data/network), verifies VAPID ES256 claims/signature, independently decrypts RFC 8291 ciphertext and ensures provider redirects are not followed. The test failed before the fix and passed afterward. Safe diagnostic counters now separate configuration, payload preparation, transport/timeouts and validated HTTP status failures; the test UI no longer blames device settings for evidenced server/provider errors.
+
+No VAPID rotation, subscription reset, billing change or database migration is needed for this fix. After release, reload the portal once and retry **Send test notification** using the existing enabled device subscription. Actual provider acceptance and physical-device display still require that user retry; passing the isolated runtime test alone does not certify live delivery.
+
+Checks: `npm run quality` passed lint, formatting, **157 tests**, marketing browser checks and portal browser checks. `npm run deploy:preview` and `git diff --check` passed. The workerd sender regression reproduced the failure before the one-option fix; afterward it made the intercepted provider request, verified signature/ciphertext interoperability, and rejected a redirect without following it. Diagnostics privacy tests use synthetic sentinel errors/provider bodies and prove they are not returned. No production keys, subscriptions or accounts were read or changed to produce this evidence.
+
 ## Device notifications and mobile setup
 
 The portal now includes an install manifest with real local 192/512-pixel PNG icons, scoped to `/portal/`. This enables the Home Screen web-app path required for iOS/iPadOS Web Push. No authenticated responses are cached by the service worker and no external assets or weaker CSP were added.

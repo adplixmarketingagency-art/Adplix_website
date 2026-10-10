@@ -89,8 +89,23 @@ export async function disableDevicePush({ navigator, persist }) {
 }
 
 export function pushTestMessage(result) {
+  const diagnostics = result?.diagnostics
+  const providerRejected =
+    diagnostics?.httpStatuses && Object.values(diagnostics.httpStatuses).some((count) => count > 0)
   if (result?.status === 'sent' || result?.sent === true || (Number.isInteger(result?.sent) && result.sent > 0))
-    return 'Push provider accepted the test for delivery. This does not confirm it appeared on your device; check notification settings and your inbox.'
+    return result?.failed > 0
+      ? 'Push provider accepted the test for at least one device, but other deliveries failed. This does not confirm it appeared on your device; check your inbox.'
+      : 'Push provider accepted the test for delivery. This does not confirm it appeared on your device; check notification settings and your inbox.'
+  if (diagnostics?.preparation > 0 && providerRejected)
+    return 'The server could not prepare some test notifications, and a push provider rejected others. Please try again later; your inbox still works.'
+  if (diagnostics?.preparation > 0)
+    return 'The server could not prepare the test notification for delivery. Please try again later; your inbox still works.'
+  if (providerRejected)
+    return 'The push provider rejected the test notification. Please try again later; your inbox still works.'
+  if (diagnostics?.timeout > 0 || diagnostics?.network > 0)
+    return 'The server could not reach the push provider or timed out. Please try again later; your inbox still works.'
+  if (diagnostics?.configuration > 0)
+    return 'Push is not configured on this server. Please try again later; your inbox still works.'
   if (
     result?.status === 'skipped' ||
     result?.skipped === true ||
@@ -98,5 +113,5 @@ export function pushTestMessage(result) {
     (result?.sent === 0 && result?.failed === 0 && result?.skipped === 0)
   )
     return 'Test notification skipped: no eligible device subscription. Enable notifications on this device and try again.'
-  return 'The test notification failed or was not accepted. Check your device settings and try again; your inbox still works.'
+  return 'The test notification failed or was not accepted. Please try again; your inbox still works.'
 }

@@ -168,6 +168,17 @@ test('test-result copy distinguishes provider acceptance from display', () => {
   assert.match(pushTestMessage({ status: 'skipped' }), /skipped/)
   assert.match(pushTestMessage({ status: 'failed' }), /failed/)
   assert.match(pushTestMessage({ sent: 0, failed: 0, skipped: 0 }), /Enable notifications/)
+  assert.match(pushTestMessage({ failed: 1, diagnostics: { preparation: 1 } }), /server could not prepare/)
+  assert.match(pushTestMessage({ failed: 1, diagnostics: { httpStatuses: { 403: 1 } } }), /provider rejected/)
+  assert.match(
+    pushTestMessage({ failed: 2, diagnostics: { preparation: 1, httpStatuses: { 403: 1 } } }),
+    /server could not prepare some.*provider rejected others/,
+  )
+  assert.match(pushTestMessage({ failed: 1, diagnostics: { network: 1 } }), /could not reach/)
+  assert.match(pushTestMessage({ failed: 1, diagnostics: { timeout: 1 } }), /timed out/)
+  assert.match(pushTestMessage({ skipped: 1, diagnostics: { configuration: 1 } }), /not configured/)
+  assert.match(pushTestMessage({ sent: 1, failed: 1 }), /other deliveries failed/)
+  assert.doesNotMatch(pushTestMessage({ failed: 1, diagnostics: { preparation: 1 } }), /device settings/)
   assert.throws(() => applicationServerKey('bad'), /Invalid server push key/)
 })
 

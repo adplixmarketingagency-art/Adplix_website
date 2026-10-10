@@ -346,6 +346,7 @@ test('push without optional credentials skips delivery and does not contact endp
       failed: 0,
       skipped: 1,
       expiredEndpoints: [],
+      diagnostics: { configuration: 1, preparation: 0, network: 0, timeout: 0, httpStatuses: {} },
     })
   } finally {
     globalThis.fetch = original
@@ -365,7 +366,13 @@ test('configured push rejects untrusted destinations before encryption/network',
         { endpoint: 'https://fcm.googleapis.com.evil.test/' },
         { endpoint: 'http://fcm.googleapis.com/' },
       ]),
-      { sent: 0, failed: 0, skipped: 3, expiredEndpoints: [] },
+      {
+        sent: 0,
+        failed: 0,
+        skipped: 3,
+        expiredEndpoints: [],
+        diagnostics: { configuration: 0, preparation: 0, network: 0, timeout: 0, httpStatuses: {} },
+      },
     )
   } finally {
     globalThis.fetch = original
@@ -387,7 +394,7 @@ test('push reports expired endpoints on 404 and 410 without following redirects'
   const subscriptions = [404, 410, 201].map((_, i) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/${i}`, keys }))
   const original = globalThis.fetch
   globalThis.fetch = async (url, options) => {
-    assert.equal(options.redirect, 'error')
+    assert.equal(options.redirect, 'manual')
     const status = [404, 410, 201][Number(url.split('/').at(-1))]
     return { status, ok: status === 201 }
   }
@@ -398,7 +405,51 @@ test('push reports expired endpoints on 404 and 410 without following redirects'
       failed: 2,
       skipped: 0,
       expiredEndpoints: subscriptions.slice(0, 2).map((s) => s.endpoint),
+      diagnostics: { configuration: 0, preparation: 0, network: 0, timeout: 0, httpStatuses: { 404: 1, 410: 1 } },
     })
+  } finally {
+    globalThis.fetch = original
+  }
+})
+
+test('push distinguishes payload preparation, transport, timeout and HTTP failures without private details', async () => {
+  const pair = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
+  const recipient = await webcrypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'])
+  const env = {
+    VAPID_PUBLIC_KEY: Buffer.from(await webcrypto.subtle.exportKey('raw', pair.publicKey)).toString('base64url'),
+    VAPID_PRIVATE_KEY: (await webcrypto.subtle.exportKey('jwk', pair.privateKey)).d,
+    VAPID_SUBJECT: 'mailto:private-subject@example.test',
+  }
+  const keys = {
+    p256dh: Buffer.from(await webcrypto.subtle.exportKey('raw', recipient.publicKey)).toString('base64url'),
+    auth: Buffer.from(webcrypto.getRandomValues(new Uint8Array(16))).toString('base64url'),
+  }
+  const subscriptions = ['bad', 'network', 'timeout', 'http', 'unknown'].map((label) => ({
+    endpoint: `https://fcm.googleapis.com/private-${label}`,
+    keys: label === 'bad' ? { ...keys, p256dh: 'private-invalid-key' } : keys,
+  }))
+  const original = globalThis.fetch
+  const requested = []
+  globalThis.fetch = async (url) => {
+    requested.push(url)
+    if (url.endsWith('network')) throw new Error('PRIVATE_NETWORK_EXCEPTION Authorization: private-token')
+    if (url.endsWith('timeout')) throw new DOMException('PRIVATE_TIMEOUT_EXCEPTION', 'TimeoutError')
+    if (url.endsWith('http')) return { ok: false, status: 403, body: 'PRIVATE_PROVIDER_BODY' }
+    return { ok: false, status: 'PRIVATE_STATUS', body: 'PRIVATE_PROVIDER_BODY' }
+  }
+  try {
+    const result = await sendBroadcastPush(env, subscriptions)
+    assert.deepEqual(result, {
+      sent: 0,
+      failed: 5,
+      skipped: 0,
+      expiredEndpoints: [],
+      diagnostics: { configuration: 0, preparation: 1, network: 1, timeout: 1, httpStatuses: { 403: 1, other: 1 } },
+    })
+    assert.equal(requested.includes(subscriptions[0].endpoint), false)
+    const publicResult = JSON.stringify(result)
+    for (const secret of ['private-', 'PRIVATE_', 'Authorization', env.VAPID_PRIVATE_KEY, env.VAPID_SUBJECT])
+      assert.equal(publicResult.includes(secret), false)
   } finally {
     globalThis.fetch = original
   }
