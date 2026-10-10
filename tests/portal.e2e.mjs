@@ -229,6 +229,13 @@ try {
   track(adminPage)
   await adminPage.goto(base + '/portal/')
   await expect(adminPage).toHaveTitle('Employee Portal · Adplix Media')
+  const manifestPath = await adminPage.locator('link[rel="manifest"]').getAttribute('href')
+  assert.match(manifestPath, /^\/(?:portal|assets)\/manifest(?:-[A-Za-z0-9_-]+)?\.webmanifest$/)
+  const manifestResponse = await adminPage.request.get(base + manifestPath)
+  assert.equal(manifestResponse.status(), 200)
+  const installManifest = await manifestResponse.json()
+  assert.equal(installManifest.display, 'standalone')
+  assert.equal(installManifest.scope, '/portal/')
   await branding(adminPage, 'auth')
   await accessibility(adminPage, 'login')
   await adminPage.setViewportSize({ width: 320, height: 812 })
@@ -238,6 +245,20 @@ try {
   await adminPage.setViewportSize({ width: 1440, height: 1000 })
   await login(adminPage, 'admin@example.test', true)
   await verifyProfilePhoto(adminPage, screenshots, 'admin')
+  // Mobile install instructions are real DOM coverage, not physical-device push proof.
+  const iosContext = await browser.newContext({
+    storageState: await adminContext.storageState(),
+    viewport: { width: 375, height: 812 },
+    userAgent:
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile Safari/604.1',
+  })
+  const iosPage = await iosContext.newPage()
+  track(iosPage)
+  await iosPage.goto(base + '/portal/#notifications')
+  await expect(iosPage.locator('#push-status')).toContainText('Share → Add to Home Screen')
+  await expect(iosPage.getByRole('button', { name: 'Enable notifications', exact: true })).toHaveCount(0)
+  await noOverflow(iosPage)
+  await iosContext.close()
   const applicantContext = await browser.newContext({ viewport: { width: 375, height: 812 }, reducedMotion: 'reduce' })
   const applicant = await applicantContext.newPage()
   track(applicant)

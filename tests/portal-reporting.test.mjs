@@ -386,10 +386,10 @@ test('push reports expired endpoints on 404 and 410 without following redirects'
   }
   const subscriptions = [404, 410, 201].map((_, i) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/${i}`, keys }))
   const original = globalThis.fetch
-  let i = 0
-  globalThis.fetch = async (_, options) => {
+  globalThis.fetch = async (url, options) => {
     assert.equal(options.redirect, 'error')
-    return { status: [404, 410, 201][i++], ok: i === 3 }
+    const status = [404, 410, 201][Number(url.split('/').at(-1))]
+    return { status, ok: status === 201 }
   }
   try {
     const result = await sendBroadcastPush(vapid, subscriptions)

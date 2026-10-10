@@ -17,6 +17,14 @@ import { cropPhoto } from './photo-crop-dialog.mjs'
 import { serverOffset, todayLoginExpired } from './today-login.mjs'
 import { profileName, installProfileGlimpses } from './profile-glimpse.mjs'
 import { createInboxTracker } from './inbox.mjs'
+import {
+  devicePushGuidance,
+  enableDevicePush,
+  disableDevicePush,
+  pushTestMessage,
+  applicationServerKey,
+  matchesApplicationServerKey,
+} from './push.mjs'
 
 const root = document.querySelector('#app')
 const API = '/api/portal'
@@ -212,6 +220,7 @@ async function request(path, options = {}) {
       state.user = null
       state.csrf = ''
       state.snapshot = null
+      state.push = null
       state.analytics = null
       state.analyticsSequence++
       state.error = 'Your session expired. Please sign in again.'
@@ -492,7 +501,18 @@ function requests() {
 }
 function notifications() {
   const list = arr(state.snapshot.notifications)
-  return `<div class="page-heading"><div><p class="eyebrow">Messages</p><h1>Inbox</h1></div></div>${section('Notifications', `<div id="inbox-items" aria-live="polite">${list.map(notificationItem).join('') || empty('Your inbox is clear.')}</div>`)}${section('Browser notifications', `<p class="muted">The inbox works even if browser notifications are unavailable or denied. Delivery to a closed tab depends on browser and device support.</p><p id="push-status" role="status">${esc(state.push?.message || 'Checking browser support…')}</p>${btn('Enable notifications', 'push-enable', '', 'primary')}${state.push?.enabled ? btn('Disable notifications', 'push-disable') : ''}`)}`
+  return `<div class="page-heading"><div><p class="eyebrow">Messages</p><h1>Inbox</h1></div></div>${section('Notifications', `<div id="inbox-items" aria-live="polite">${list.map(notificationItem).join('') || empty('Your inbox is clear.')}</div>`)}${section('Device notifications', `<p class="muted">The inbox remains available if device notifications are denied or unavailable. Alerts can arrive when the portal is closed on supported devices, subject to browser and device settings.</p><p class="fine">${esc(devicePushGuidance({ navigator, window }).message)}</p><p id="push-status" role="status">${esc(state.push?.message || 'Checking browser support…')}</p><div id="push-controls" class="actions">${pushControls()}</div><p id="push-test-result" role="status" aria-live="polite"></p>`)}`
+}
+function pushControls() {
+  const push = state.push
+  if (!push?.key || !push.available) return ''
+  return `${push.enabled ? btn('Disable notifications', 'push-disable') + btn('Send test notification', 'push-test') : btn('Enable notifications', 'push-enable', '', 'primary')}`
+}
+function syncPushUI() {
+  const status = document.querySelector('#push-status')
+  if (status) status.textContent = state.push?.message || 'Checking browser support…'
+  const controls = document.querySelector('#push-controls')
+  if (controls) controls.innerHTML = pushControls()
 }
 function notificationItem(n) {
   return `<div class="list-item ${n.readAt ? '' : 'unread'}" data-notification-id="${esc(n.id)}" data-read-at="${esc(n.readAt || '')}"><div class="split"><strong>${esc(n.title)}</strong><small>${fmtDateTime(n.createdAt)}</small></div>${senderIdentity(n.sender) ? `<small class="sender-identity">${senderIdentity(n.sender)}</small>` : ''}<p>${esc(n.text)}</p>${!n.readAt ? btn('Mark as read', 'notification-read', n.id, 'small') : ''}</div>`
@@ -1301,6 +1321,7 @@ async function handleAction(button) {
       state.user = null
       state.csrf = ''
       state.snapshot = null
+      state.push = null
       state.analytics = null
       state.analyticsQuickRange = ''
       state.analyticsSequence++
@@ -1509,74 +1530,109 @@ async function handleAction(button) {
     return
   }
   if (action === 'push-enable' || action === 'push-disable') await configurePush(action === 'push-enable', button)
+  if (action === 'push-test') await sendPushTest(button)
 }
 async function configurePush(enable, button) {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-    flash('Browser push is unavailable here. Your inbox still works.', true)
-    return
-  }
-  if (!state.push?.key) {
-    flash('Browser push is not configured on this server. Your inbox still works.', true)
-    return
-  }
+  if (state.push?.busy || !state.push?.key || !state.push.available) return
+  const push = state.push
+  const user = state.user?.id,
+    csrf = state.csrf
+  push.busy = true
   button.disabled = true
   try {
-    const registration = await navigator.serviceWorker.register('/portal/sw.js', { scope: '/portal/' })
-    const existing = await registration.pushManager.getSubscription()
-    if (!enable) {
-      await post('/push-subscription', { subscription: null })
-      await existing?.unsubscribe()
-      state.push.enabled = false
-      flash('Browser notifications disabled.')
-    } else {
-      const permission = await Notification.requestPermission()
-      if (permission !== 'granted') throw new Error('Notifications were not enabled. Your inbox still works.')
-      const raw = atob(
-        state.push.key
-          .replace(/-/g, '+')
-          .replace(/_/g, '/')
-          .padEnd(Math.ceil(state.push.key.length / 4) * 4, '='),
-      )
-      const key = Uint8Array.from(raw, (x) => x.charCodeAt(0))
-      const sub =
-        existing || (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }))
-      const data = sub.toJSON()
-      await post('/push-subscription', { subscription: { endpoint: data.endpoint, keys: data.keys } })
-      state.push.enabled = true
-      flash('Browser notifications enabled. Your inbox remains the source of record.')
-    }
-    const status = document.querySelector('#push-status')
-    if (status) status.textContent = state.push.enabled ? 'Enabled on this browser.' : 'Disabled on this browser.'
+    // enableDevicePush calls requestPermission before its first asynchronous operation.
+    const result = enable
+      ? await enableDevicePush({
+          navigator,
+          Notification,
+          publicKey: push.key,
+          persist: (body) => post('/push-subscription', body),
+        })
+      : await disableDevicePush({ navigator, persist: (body) => post('/push-subscription', body) })
+    if (state.user?.id !== user || state.csrf !== csrf || state.push !== push) return
+    push.enabled = result.enabled
+    push.message = result.enabled
+      ? 'Enabled on this device and saved to your account. Delivery depends on device settings.'
+      : result.permission === 'denied'
+        ? 'Permission blocked. Allow notifications for this portal in your browser or device settings, then retry.'
+        : result.permission === 'default'
+          ? 'Permission was not granted. Your inbox still works; tap Enable to try again.'
+          : 'Device notifications disabled for your account.'
+    syncPushUI()
   } catch (err) {
-    flash(err.message, true)
+    if (state.user?.id === user && state.csrf === csrf && state.push === push) {
+      push.message = `${err.message || 'Device notifications could not be enabled.'} Your inbox still works.`
+      syncPushUI()
+    }
   } finally {
-    button.disabled = false
+    push.busy = false
+    if (button.isConnected) button.disabled = false
+  }
+}
+async function sendPushTest(button) {
+  if (!state.push?.enabled || state.push.busy) return
+  const push = state.push
+  const user = state.user?.id,
+    csrf = state.csrf
+  push.busy = true
+  button.disabled = true
+  const result = document.querySelector('#push-test-result')
+  if (result) result.textContent = 'Sending a test to the push provider…'
+  try {
+    const response = await post('/push-test', {})
+    if (state.user?.id === user && state.csrf === csrf && state.push === push && result?.isConnected)
+      result.textContent = pushTestMessage(response)
+  } catch (err) {
+    if (state.user?.id === user && state.csrf === csrf && state.push === push && result?.isConnected)
+      result.textContent = `Test notification failed: ${err.message}. Provider acceptance does not confirm display on your device.`
+  } finally {
+    push.busy = false
+    if (button.isConnected) button.disabled = false
   }
 }
 async function checkPush() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-    state.push = { message: 'This browser does not support push notifications.' }
+  const guidance = devicePushGuidance({ navigator, window })
+  if (!guidance.available) {
+    state.push = { message: guidance.message, available: false }
+    syncPushUI()
     return
   }
+  const user = state.user?.id,
+    csrf = state.csrf
+  let push
   try {
     const config = await json('/push-key')
+    if (state.user?.id !== user || state.csrf !== csrf) return
     state.push = {
       key: config.publicKey,
+      available: true,
+      enabled: false,
       message: config.publicKey
         ? Notification.permission === 'denied'
-          ? 'Permission is blocked in browser settings.'
-          : 'Optional notifications can be enabled here.'
+          ? 'Permission blocked. Allow notifications in your browser or device settings, then retry.'
+          : 'Enable to connect this device to your account.'
         : config.message || 'Push is not configured on this server.',
     }
+    push = state.push
     if (config.publicKey) {
       const reg = await navigator.serviceWorker.getRegistration('/portal/')
-      state.push.enabled = Boolean(await reg?.pushManager.getSubscription())
+      const existing = await reg?.pushManager.getSubscription()
+      if (state.user?.id !== user || state.csrf !== csrf || state.push !== push) return
+      // A browser subscription alone cannot prove the server still has it persisted.
+      if (existing && Notification.permission === 'granted') {
+        push.enabled = Boolean(
+          config.deviceSubscribed && matchesApplicationServerKey(existing, applicationServerKey(config.publicKey)),
+        )
+        push.message = push.enabled
+          ? 'Enabled on this device and saved to your account. Use Send test notification to check device delivery.'
+          : 'This device has a subscription. Tap Enable to confirm it is saved to your account.'
+      }
     }
   } catch {
+    if (state.user?.id !== user || state.csrf !== csrf || (push && state.push !== push)) return
     state.push = { message: 'Push configuration is currently unavailable. The inbox still works.' }
   }
-  const status = document.querySelector('#push-status')
-  if (status) status.textContent = state.push.message
+  syncPushUI()
 }
 async function handleForm(form, button) {
   const v = values(form),

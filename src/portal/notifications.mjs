@@ -47,10 +47,12 @@ export async function sendBroadcastPush(env, subscriptions = []) {
     return counts
   }
   const vapid = { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT }
-  for (const subscription of subscriptions) {
+  // Five concurrent sends avoid 20 sequential provider timeouts outliving waitUntil.
+  // The total is bounded for the small portal's Worker/subrequest budget.
+  const send = async (subscription) => {
     if (!trustedEndpoint(subscription?.endpoint)) {
       counts.skipped++
-      continue
+      return
     }
     try {
       const payload = await buildPushPayload(
@@ -61,7 +63,11 @@ export async function sendBroadcastPush(env, subscriptions = []) {
         subscription,
         vapid,
       )
-      const response = await fetch(subscription.endpoint, { ...payload, redirect: 'error' })
+      const response = await fetch(subscription.endpoint, {
+        ...payload,
+        redirect: 'error',
+        signal: AbortSignal.timeout(5000),
+      })
       if (response.ok) counts.sent++
       else {
         counts.failed++
@@ -71,5 +77,9 @@ export async function sendBroadcastPush(env, subscriptions = []) {
       counts.failed++
     }
   }
+  for (let index = 0; index < Math.min(subscriptions.length, 20); index += 5)
+    await Promise.all(subscriptions.slice(index, Math.min(index + 5, 20)).map(send))
+  counts.expiredEndpoints.sort()
+  counts.skipped += Math.max(0, subscriptions.length - 20)
   return counts
 }

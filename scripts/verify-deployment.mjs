@@ -40,6 +40,18 @@ assert.equal(redirect.headers.get('location'), '/portal/')
 const worker = await request('/portal/sw.js')
 assert.equal(worker.status, 200)
 assert.match(worker.headers.get('content-type') || '', /javascript/)
+assert.equal(await worker.text(), await readFile('.worker-dist/portal/sw.js', 'utf8'), 'Current push service worker')
+const manifest = await request('/portal/manifest.webmanifest')
+assert.equal(manifest.status, 200)
+assert.match(manifest.headers.get('content-type') || '', /json/)
+assert.deepEqual(await manifest.json(), JSON.parse(await readFile('.worker-dist/portal/manifest.webmanifest', 'utf8')))
+for (const size of [192, 512]) {
+  const icon = await request(`/portal/icon-${size}.png`)
+  assert.equal(icon.status, 200)
+  assert.match(icon.headers.get('content-type') || '', /image\/png/)
+  assert.deepEqual(Buffer.from(await icon.arrayBuffer()), await readFile(`.worker-dist/portal/icon-${size}.png`))
+}
+console.info('Device push service worker, install manifest and mobile icons: correct build')
 for (const endpoint of ['session', 'snapshot', 'analytics', 'export']) {
   const response = await request(`/api/portal/${endpoint}`)
   assert.equal(response.status, 401, `${endpoint} denies unauthenticated access`)

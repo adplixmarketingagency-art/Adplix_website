@@ -3,7 +3,7 @@ self.addEventListener('push', (event) => {
     Promise.all([
       self.registration.showNotification('Adplix workspace', {
         body: 'You have a new workspace update. Sign in to view it.',
-        icon: '/images/adplix-logo.jpeg',
+        icon: '/portal/icon-192.png',
         data: { url: '/portal/#notifications' },
       }),
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then((pages) => {

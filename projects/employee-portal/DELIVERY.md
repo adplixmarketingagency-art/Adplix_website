@@ -1,5 +1,21 @@
 # Employee Portal — Delivery and Setup
 
+## Device notifications and mobile setup
+
+The portal now includes an install manifest with real local 192/512-pixel PNG icons, scoped to `/portal/`. This enables the Home Screen web-app path required for iOS/iPadOS Web Push. No authenticated responses are cached by the service worker and no external assets or weaker CSP were added.
+
+- **iPhone/iPad:** use iOS/iPadOS 16.4 or newer. Open `/portal/` in Safari, choose **Share → Add to Home Screen**, then open **Adplix Portal** from its icon, sign in and enable notifications in Inbox. Permission must be granted from that installed app. See [WebKit's platform requirements](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
+- **Android:** open the portal in an up-to-date compatible browser such as Chrome; in Inbox choose **Enable notifications** and allow the device prompt. Home Screen installation is available but is not required for Android Web Push.
+- **Desktop:** enable notifications in Inbox and allow the prompt. OS/browser notification settings, Focus/Do Not Disturb and browser/device restrictions can mute delivery.
+
+Permission is requested directly from the user's tap before asynchronous registration; subscription waits for an active service worker. Existing subscriptions for a different VAPID key are replaced. Subscription persistence is verified before declaring the device enabled. Phone and desktop subscriptions no longer overwrite each other; up to five devices are retained per account. Disabling/signing out affects this known device, not the others. The first re-enable binds older unbound subscriptions to the shared-browser safety cookie.
+
+Newly committed inbox events trigger optional device notifications for both roles, not just Employee notes/broadcasts. The service worker displays a generic OS notification without exposing private note/message text, even when the portal is closed, and notification clicks open Inbox. **Send test notification** sends to the account's registered devices and reports provider acceptance/failure without claiming display. To verify, enable on the target device, send a test, leave the portal and check Notification Center/notification shade. Then send a real note/broadcast from a different authorized account. Physical-device/background delivery remains a required user smoke check; simulated unit/browser coverage cannot certify it.
+
+No billing changes or secret rotation are required. Delivery is bounded to 20 endpoints per action (five concurrent requests with five-second timeouts) and five per test; a large audience needs a durable send queue before universal device delivery can be promised. Inbox records persist even if push fails or a device is unsupported/offline.
+
+Verification: Node 22 unit/integration run passed **154 tests**. Lint, formatting, marketing browser checks, portal browser checks, deployment packaging and `git diff --check` passed. The portal browser suite checked the linked production-built install manifest and iPhone Home Screen guidance without pretending to be a physical iOS device. Unit/API checks cover gesture-before-registration ordering, active-worker readiness, permission denial, key-mismatch repair, safe multi-device ownership, device-bound login/logout revocation, Admin and Employee push dispatch, protected/rate-limited test delivery, and provider failure without inbox rollback. Provider calls use mocks with synthetic cryptographic keys in tests; no real-user notification was sent during automated verification. The updated deployment verifier also checks the exact service-worker, manifest and icon bytes on production. Graphify was updated locally; manifest, icons, CSS and service-worker behavior were checked directly where AST coverage is absent.
+
 ## Live inbox, sender attribution and unread count
 
 Visible signed-in portals now poll every 15 seconds, with an immediate check on focus/visibility return and a service-worker push signal. The inbox list, sidebar unread badge and visible notes update without reloading or replacing draft forms. Poll requests do not overlap and stale responses after a newer snapshot/session change are discarded. Busy writes or an open editing modal defer polling until the next check.

@@ -98,13 +98,40 @@ const eventDescription = (value) => {
   if (typeof value !== 'string' || value.length > 1000) fail('Invalid event description.')
   return value.trim()
 }
-const pushForEmployees = (state, ids) => {
-  const eligible = new Set(
-    state.users
-      .filter((u) => u.active && u.role === 'Employee' && (!ids.length || ids.includes(u.id)))
-      .map((u) => u.id),
-  )
-  return (state.subscriptions || []).filter((x) => eligible.has(x.employeeId))
+const MAX_DEVICE_SUBSCRIPTIONS = 5
+const MAX_ACTION_PUSHES = 20
+const pushDeviceCookie = (request) =>
+  /(?:^|;\s*)portal_push_device=([a-f0-9]{32})(?:;|$)/.exec(request.headers.get('Cookie') || '')?.[1]
+const deviceCookieHeader = (token, request) =>
+  `portal_push_device=${token}; HttpOnly; SameSite=Strict; Path=/api/portal; Max-Age=31536000${new URL(request.url).protocol === 'https:' ? '; Secure' : ''}`
+const subscriptionsFor = (state, ids, limit = MAX_ACTION_PUSHES) => {
+  const eligible = new Set(state.users.filter((u) => u.active && ids.has(u.id)).map((u) => u.id))
+  const owners = new Map()
+  for (const item of state.subscriptions || []) {
+    const endpoint = item.subscription?.endpoint
+    if (typeof endpoint === 'string') {
+      const ids = owners.get(endpoint) || new Set()
+      ids.add(item.employeeId)
+      owners.set(endpoint, ids)
+    }
+  }
+  const seen = new Set()
+  const result = []
+  for (const item of state.subscriptions || []) {
+    const endpoint = item.subscription?.endpoint
+    if (!eligible.has(item.employeeId) || owners.get(endpoint)?.size !== 1 || seen.has(endpoint)) continue
+    seen.add(endpoint)
+    result.push(item.subscription)
+    if (result.length === limit) break
+  }
+  return result
+}
+const cleanExpiredPush = async (db, result) => {
+  if (!result.expiredEndpoints?.length) return
+  const expired = new Set(result.expiredEndpoints)
+  await mutate(db, (state) => {
+    state.subscriptions = (state.subscriptions || []).filter((item) => !expired.has(item.subscription?.endpoint))
+  })
 }
 // No passwords, free-form content, endpoint URLs, or request payloads belong in audit records.
 const audit = (state, actorId, action, subjectId = null) =>
@@ -142,12 +169,11 @@ const profileGlimpse = ({ id, name, role, designation, jobFunctions, active, pro
     photoDataUrl,
   }
 }
-const validateSubscription = (sub) => {
-  if (!sub || typeof sub !== 'object' || typeof sub.endpoint !== 'string' || sub.endpoint.length > 2048)
-    fail('Invalid subscription.')
+const validatePushEndpoint = (endpoint) => {
+  if (typeof endpoint !== 'string' || !endpoint || endpoint.length > 2048) fail('Invalid subscription endpoint.')
   let url
   try {
-    url = new URL(sub.endpoint)
+    url = new URL(endpoint)
   } catch {
     fail('Invalid subscription.')
   }
@@ -163,13 +189,18 @@ const validateSubscription = (sub) => {
     )
   )
     fail('Invalid subscription endpoint.')
+  return url.href
+}
+const validateSubscription = (sub) => {
+  if (!sub || typeof sub !== 'object' || Array.isArray(sub)) fail('Invalid subscription.')
+  const endpoint = validatePushEndpoint(sub.endpoint)
   if (
     !sub.keys ||
     !/^[A-Za-z0-9_-]{80,120}$/.test(sub.keys.p256dh || '') ||
     !/^[A-Za-z0-9_-]{16,32}$/.test(sub.keys.auth || '')
   )
     fail('Invalid subscription keys.')
-  return { endpoint: url.href, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } }
+  return { endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } }
 }
 const snapshot = (state, user, now = new Date()) => {
   const isAdmin = user.role === 'Admin'
@@ -293,9 +324,11 @@ const filters = (url) => {
 }
 
 async function action(db, actorId, credentialVersion, a, env) {
-  let revoke = null,
-    push = null
-  await mutate(db, async (s) => {
+  let revoke = null
+  const push = await mutate(db, async (s) => {
+    // This callback can be retried after a revision conflict. Only the committed
+    // invocation's newly created inbox rows may produce an external side effect.
+    const previousIds = new Set((s.notifications || []).map((n) => n.id))
     const actor = active(s, actorId)
     if (!actor || (actor.credentialVersion || 0) !== credentialVersion) fail('Session expired.', 401)
     if (actor.mustChangePassword) fail('Change your password first.', 403)
@@ -755,7 +788,6 @@ async function action(db, actorId, credentialVersion, a, env) {
           (x) => x.active && x.role === 'Employee' && (!rids.length || rids.includes(x.id)),
         ))
           notify(s, e.id, 'New note', text, { senderId: actor.id })
-        push = pushForEmployees(s, rids)
         break
       }
       case 'note.delete':
@@ -778,7 +810,6 @@ async function action(db, actorId, credentialVersion, a, env) {
             (x) => x.active && x.role === 'Employee' && (!ids.length || ids.includes(x.id)),
           ))
             notify(s, u.id, title, text, { senderId: actor.id })
-          push = pushForEmployees(s, ids)
         }
         break
       case 'notification.read':
@@ -791,6 +822,10 @@ async function action(db, actorId, credentialVersion, a, env) {
         fail('Unknown action.')
     }
     audit(s, actor.id, a.type, subjectId)
+    const newRecipients = new Set(
+      (s.notifications || []).filter((n) => !previousIds.has(n.id)).map((n) => n.employeeId),
+    )
+    return subscriptionsFor(s, newRecipients)
   })
   if (revoke) await revokeUser(db, revoke)
   return push
@@ -881,6 +916,20 @@ export async function handlePortalApi(request, env, context) {
             (x.credentialVersion || 0) === (user.credentialVersion || 0),
         )
       if (!current) fail('Invalid credentials.', 401)
+      const deviceToken = pushDeviceCookie(request)
+      if (
+        deviceToken &&
+        (latest.subscriptions || []).some((x) => x.deviceHash === tokenHash(deviceToken) && x.employeeId !== current.id)
+      ) {
+        const deviceHash = tokenHash(deviceToken)
+        await mutate(db, (s) => {
+          // A shared browser must stop receiving the previous account's alerts
+          // before the new session is issued; other devices remain subscribed.
+          s.subscriptions = (s.subscriptions || []).filter(
+            (x) => x.deviceHash !== deviceHash || x.employeeId === current.id,
+          )
+        })
+      }
       if (current.role === 'Admin' || current.role === 'Employee') {
         const loginAt = new Date()
         await mutate(db, (s) => loginRecordFor((s.loginRecords ||= []), current.id, businessDate(loginAt), loginAt))
@@ -903,6 +952,13 @@ export async function handlePortalApi(request, env, context) {
     if (endpoint === 'session' && method === 'GET')
       return response({ user: publicUser(user), csrfToken: tokenHash('csrf:' + token) })
     if (endpoint === 'logout' && method === 'POST') {
+      const deviceToken = pushDeviceCookie(request)
+      if (deviceToken)
+        await mutate(db, (s) => {
+          s.subscriptions = (s.subscriptions || []).filter(
+            (x) => x.employeeId !== user.id || x.deviceHash !== tokenHash(deviceToken),
+          )
+        })
       await db.prepare('DELETE FROM portal_sessions WHERE token_hash=?').bind(tokenHash(token)).run()
       return response({ ok: true }, 200, { 'Set-Cookie': clearCookie(request) })
     }
@@ -945,18 +1001,8 @@ export async function handlePortalApi(request, env, context) {
       const push = await action(db, user.id, row.credential_version, await json(request, 50000), env)
       if (push?.length)
         context?.waitUntil?.(
-          sendBroadcastPush(
-            env,
-            push.map((x) => x.subscription),
-          )
-            .then(async (result) => {
-              if (result.expiredEndpoints?.length)
-                await mutate(db, (state) => {
-                  state.subscriptions = state.subscriptions.filter(
-                    (item) => !result.expiredEndpoints.includes(item.subscription.endpoint),
-                  )
-                })
-            })
+          sendBroadcastPush(env, push)
+            .then((result) => cleanExpiredPush(db, result))
             .catch(() => {}),
         )
       return response({ ok: true })
@@ -985,29 +1031,74 @@ export async function handlePortalApi(request, env, context) {
     }
     if (endpoint === 'push-key' && method === 'GET') {
       const config = pushConfiguration(env)
+      const device = pushDeviceCookie(request)
+      const state = (await readState(db)).state
       return response({
         publicKey: config.configured ? env.VAPID_PUBLIC_KEY : null,
         configured: config.configured,
         missing: config.missing,
         message: config.message,
+        deviceSubscribed: Boolean(
+          device &&
+          (state.subscriptions || []).some(
+            (item) => item.employeeId === user.id && item.deviceHash === tokenHash(device),
+          ),
+        ),
       })
     }
     if (endpoint === 'push-subscription' && method === 'POST') {
       const body = await json(request)
+      if (!Object.hasOwn(body, 'subscription')) fail('Invalid subscription.')
       if (body.subscription !== null) {
         const config = pushConfiguration(env)
         if (!config.configured) fail(config.message, 503)
       }
       const subscription = body.subscription === null ? null : validateSubscription(body.subscription)
+      const deviceToken = subscription ? pushDeviceCookie(request) || crypto.randomUUID().replaceAll('-', '') : null
+      // An absent endpoint means this browser has no subscription to revoke.
+      const endpointToRemove = subscription
+        ? subscription.endpoint
+        : body.endpoint === undefined
+          ? null
+          : validatePushEndpoint(body.endpoint)
       await mutate(db, (s) => {
         const actor = active(s, user.id)
         if (!actor || (actor.credentialVersion || 0) !== row.credential_version) fail('Session expired.', 401)
         if (actor.mustChangePassword) fail('Change your password first.', 403)
-        s.subscriptions = s.subscriptions.filter((x) => x.employeeId !== user.id)
-        if (subscription) s.subscriptions.push({ employeeId: user.id, subscription })
+        s.subscriptions ||= []
+        if (subscription) {
+          // One endpoint belongs to exactly one account, including after a shared
+          // browser signs into a different account.
+          s.subscriptions = s.subscriptions.filter(
+            (x) => x.subscription?.endpoint !== endpointToRemove && x.deviceHash !== tokenHash(deviceToken),
+          )
+          if (s.subscriptions.filter((x) => x.employeeId === actor.id).length >= MAX_DEVICE_SUBSCRIPTIONS)
+            fail('Device subscription limit reached.', 409)
+          s.subscriptions.push({ employeeId: actor.id, subscription, deviceHash: tokenHash(deviceToken) })
+        } else if (endpointToRemove) {
+          s.subscriptions = s.subscriptions.filter(
+            (x) => x.employeeId !== actor.id || x.subscription?.endpoint !== endpointToRemove,
+          )
+        } else if (pushDeviceCookie(request)) {
+          s.subscriptions = s.subscriptions.filter(
+            (x) => x.employeeId !== actor.id || x.deviceHash !== tokenHash(pushDeviceCookie(request)),
+          )
+        }
         audit(s, actor.id, subscription ? 'push.subscribe' : 'push.unsubscribe', actor.id)
       })
-      return response({ ok: true })
+      return response({ ok: true }, 200, deviceToken ? { 'Set-Cookie': deviceCookieHeader(deviceToken, request) } : {})
+    }
+    if (endpoint === 'push-test' && method === 'POST') {
+      const body = await json(request)
+      if (Object.keys(body).length) fail('Invalid request.')
+      const state = (await readState(db)).state
+      currentActor(state, user.id, row.credential_version)
+      const subscriptions = subscriptionsFor(state, new Set([user.id]), MAX_DEVICE_SUBSCRIPTIONS)
+      if (await throttle(db, 'pushTest:' + tokenHash(user.id))) fail('Too many attempts. Try again later.', 429)
+      // The send is bounded to five owned devices and eight attempts per 15 minutes.
+      const result = await sendBroadcastPush(env, subscriptions)
+      await cleanExpiredPush(db, result)
+      return response({ sent: result.sent, failed: result.failed, skipped: result.skipped })
     }
     return response({ error: 'Not found.' }, 404)
   } catch (error) {

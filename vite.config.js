@@ -25,14 +25,15 @@ export default defineConfig({
   plugins: [
     react(),
     {
-      name: 'portal-service-worker',
+      name: 'portal-device-push-assets',
       apply: 'build',
       generateBundle() {
-        this.emitFile({
-          type: 'asset',
-          fileName: 'portal/sw.js',
-          source: readFileSync(new URL('./portal/sw.js', import.meta.url), 'utf8'),
-        })
+        for (const file of ['sw.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'])
+          this.emitFile({
+            type: 'asset',
+            fileName: `portal/${file}`,
+            source: readFileSync(new URL(`./portal/${file}`, import.meta.url)),
+          })
       },
     },
   ],
