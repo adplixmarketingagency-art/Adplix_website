@@ -27,10 +27,12 @@ function jpeg(width = 1, height = 1, extra = []) {
 }
 const dataUrl = (bytes) => 'data:image/jpeg;base64,' + Buffer.from(bytes).toString('base64')
 const photo = dataUrl(jpeg(128, 128))
+const detailedPhoto = dataUrl(jpeg(512, 512, Array(24_000).fill(0)))
 const err = (value) => assert.throws(() => validateProfilePhoto(value), { status: 400 })
 
 test('bounded baseline raster is accepted; spoofed signatures, URLs, SVG, bad base64 and malformed JPEG are refused', () => {
   assert.equal(validateProfilePhoto(photo), photo)
+  assert.equal(validateProfilePhoto(detailedPhoto), detailedPhoto)
   assert.equal(validateProfilePhoto(dataUrl(jpeg(1, 1))), dataUrl(jpeg(1, 1)))
   const maximum = dataUrl(jpeg(1, 1, Array(MAX_PROFILE_PHOTO_BYTES - jpeg().length).fill(0)))
   assert.equal(validateProfilePhoto(maximum), maximum)
@@ -49,8 +51,8 @@ test('bounded baseline raster is accepted; spoofed signatures, URLs, SVG, bad ba
     dataUrl([...jpeg().slice(0, -3), 255, 217]),
   ])
     err(value)
-  err(dataUrl(jpeg(129, 128)))
-  err(dataUrl(jpeg(128, 129)))
+  err(dataUrl(jpeg(513, 512)))
+  err(dataUrl(jpeg(512, 513)))
   err(dataUrl(jpeg(0, 1)))
   err(dataUrl(jpeg(1, 0)))
   err(dataUrl(jpeg(1, 1, Array(MAX_PROFILE_PHOTO_BYTES).fill(42))))
@@ -200,6 +202,21 @@ for (const role of ['Admin', 'Employee'])
     assert.deepEqual(snapshot.user.profile, { phone: '456', bio: 'Changed', photoDataUrl: null })
     assert.equal(JSON.stringify(f.state.users[1]), otherBefore)
   })
+
+test('a detailed photo larger than the ordinary action limit persists and reaches the photo viewer snapshot', async () => {
+  const self = user('self', 'Employee'),
+    f = fixture([self]),
+    h = headers(f, self)
+  assert.ok(JSON.stringify({ type: 'profile.photo', photo: detailedPhoto }).length > 20_000)
+  const result = await call(f, 'actions', 'POST', h, { type: 'profile.photo', photo: detailedPhoto })
+  assert.equal(result.status, 200)
+  assert.equal(f.state.users[0].profile.photoDataUrl, detailedPhoto)
+  const snapshot = await (await call(f, 'snapshot', 'GET', h)).json()
+  assert.equal(snapshot.profileGlimpses[0].photoDataUrl, detailedPhoto)
+  assert.equal(snapshot.user.profile.photoDataUrl, detailedPhoto)
+  const nonPhoto = await call(f, 'actions', 'POST', h, { type: 'profile.update', profile: { bio: 'x'.repeat(60_000) } })
+  assert.equal(nonPhoto.status, 413)
+})
 
 test('admin account-detail edit preserves an employee photo', async () => {
   const admin = user('admin', 'Admin'),

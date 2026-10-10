@@ -4,7 +4,7 @@ import { hashPortalPassword, verifyPortalPassword } from './password-service.mjs
 import { businessDate, dailyUpdateStatus, transitionTask, decorateTask, loginRecordFor } from './domain.mjs'
 import { buildAnalytics } from './analytics.mjs'
 import { analyticsWorkbook } from './excel.mjs'
-import { sendBroadcastPush } from './notifications.mjs'
+import { pushConfiguration, sendBroadcastPush } from './notifications.mjs'
 import { validateProfilePhoto } from './profile-photo.mjs'
 
 const fail = (message, status = 400) => {
@@ -40,10 +40,10 @@ const response = (data, status = 200, headers = {}) =>
       ...headers,
     },
   })
-const json = async (request) => {
-  if (Number(request.headers.get('content-length')) > 20000) fail('Request too large.', 413)
+const json = async (request, maxBytes = 20000) => {
+  if (Number(request.headers.get('content-length')) > maxBytes) fail('Request too large.', 413)
   const text = await request.text()
-  if (text.length > 20000) fail('Request too large.', 413)
+  if (text.length > maxBytes) fail('Request too large.', 413)
   try {
     const value = JSON.parse(text)
     if (!value || Array.isArray(value) || typeof value !== 'object') fail('Invalid JSON.')
@@ -915,7 +915,9 @@ export async function handlePortalApi(request, env, context) {
       return response(snapshot(state, currentActor(state, user.id, row.credential_version)))
     }
     if (endpoint === 'actions' && method === 'POST') {
-      const push = await action(db, user.id, row.credential_version, await json(request), env)
+      // A 512px/32KiB JPEG is ~44KiB as base64; keep the larger body limit scoped to
+      // authenticated actions, while all other JSON endpoints retain the 20KiB cap.
+      const push = await action(db, user.id, row.credential_version, await json(request, 50000), env)
       if (push?.length)
         context?.waitUntil?.(
           sendBroadcastPush(
@@ -956,10 +958,21 @@ export async function handlePortalApi(request, env, context) {
         },
       })
     }
-    if (endpoint === 'push-key' && method === 'GET') return response({ publicKey: env.VAPID_PUBLIC_KEY || null })
+    if (endpoint === 'push-key' && method === 'GET') {
+      const config = pushConfiguration(env)
+      return response({
+        publicKey: config.configured ? env.VAPID_PUBLIC_KEY : null,
+        configured: config.configured,
+        missing: config.missing,
+        message: config.message,
+      })
+    }
     if (endpoint === 'push-subscription' && method === 'POST') {
       const body = await json(request)
-      if (body.subscription !== null && !env.VAPID_PUBLIC_KEY) fail('Push is not configured.', 503)
+      if (body.subscription !== null) {
+        const config = pushConfiguration(env)
+        if (!config.configured) fail(config.message, 503)
+      }
       const subscription = body.subscription === null ? null : validateSubscription(body.subscription)
       await mutate(db, (s) => {
         const actor = active(s, user.id)

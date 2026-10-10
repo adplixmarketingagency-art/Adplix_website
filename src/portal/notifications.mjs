@@ -9,6 +9,19 @@ const TRUSTED = [
   /^.*\.notify\.windows\.com$/,
 ]
 
+const VAPID_KEYS = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT']
+
+export function pushConfiguration(env) {
+  const missing = VAPID_KEYS.filter((key) => typeof env?.[key] !== 'string' || !env[key].trim())
+  return {
+    configured: missing.length === 0,
+    missing,
+    message: missing.length
+      ? `Push is not configured on this server. Set ${missing.join(', ')} in the production Worker secrets.`
+      : 'Optional notifications can be enabled here.',
+  }
+}
+
 function trustedEndpoint(value) {
   try {
     const url = new URL(value)
@@ -28,7 +41,8 @@ function trustedEndpoint(value) {
 export async function sendBroadcastPush(env, subscriptions = []) {
   const counts = { sent: 0, failed: 0, skipped: 0, expiredEndpoints: [] }
   if (!Array.isArray(subscriptions)) throw new TypeError('Subscriptions must be an array')
-  if (!env?.VAPID_PUBLIC_KEY || !env?.VAPID_PRIVATE_KEY || !env?.VAPID_SUBJECT) {
+  const config = pushConfiguration(env)
+  if (!config.configured) {
     counts.skipped = subscriptions.length
     return counts
   }

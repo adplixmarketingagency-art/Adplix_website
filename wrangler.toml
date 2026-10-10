@@ -1,6 +1,10 @@
 name = "withered-pine-ee0b"
 compatibility_date = "2026-09-12"
 main = "src/index.js"
+# Browser push is opt-in. Supply all three values to the production Worker
+# without committing them: wrangler secret put VAPID_PUBLIC_KEY, then
+# VAPID_PRIVATE_KEY and VAPID_SUBJECT. The app keeps inbox delivery available
+# until the complete set is present.
 [assets]
 directory = ".worker-dist"
 binding = "ASSETS"

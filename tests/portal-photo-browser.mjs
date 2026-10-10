@@ -26,7 +26,7 @@ export async function verifyProfilePhoto(page, screenshots, label) {
   const dimensions = async () => {
     await expect
       .poll(() => photo.evaluate((image) => (image.complete ? [image.naturalWidth, image.naturalHeight] : [])))
-      .toEqual([128, 128])
+      .toEqual([512, 512])
   }
   const layout = async () => {
     assert.ok(
@@ -165,7 +165,7 @@ export async function verifyProfilePhoto(page, screenshots, label) {
   assert.ok(!(await savedPhoto()), 'Gestures do not save until explicitly requested')
   await dialog.getByRole('button', { name: 'Use photo' }).click()
   await expect(dialog).toHaveCount(0)
-  await expect(status).toContainText('Preview: 128 × 128 px. Not saved yet.')
+  await expect(status).toContainText('Preview: 512 × 512 px. Not saved yet.')
   await dimensions()
   const staged = await photo.getAttribute('src')
   await expect(save).toBeEnabled()

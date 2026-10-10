@@ -1,6 +1,7 @@
 export const MAX_PHOTO_BYTES = 5 * 1024 * 1024
-export const MAX_JPEG_BYTES = 12 * 1024
-export const PHOTO_SIZES = [64, 96, 128]
+export const MAX_JPEG_BYTES = 32 * 1024
+export const PHOTO_SIZES = [64, 96, 128, 512]
+export const PROFILE_PHOTO_SIZE = 512
 const allowed = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
 export function validatePhotoFile(file) {
@@ -81,7 +82,7 @@ export function cropBounds(width, height, crop = { zoom: 1, x: 0.5, y: 0.5 }) {
   return { left: (width - side) * x, top: (height - side) * y, side }
 }
 
-export async function preparePhoto(file, size = 128, crop = { zoom: 1, x: 0.5, y: 0.5 }) {
+export async function preparePhoto(file, size = PROFILE_PHOTO_SIZE, crop = { zoom: 1, x: 0.5, y: 0.5 }) {
   validatePhotoFile(file)
   if (!Number.isInteger(size) || !PHOTO_SIZES.includes(size)) throw new Error('Choose a supported photo size.')
   validateCrop(crop)
@@ -103,9 +104,9 @@ export async function preparePhoto(file, size = 128, crop = { zoom: 1, x: 0.5, y
     context.drawImage(image, left, top, side, side, 0, 0, size, size)
     for (const quality of [0.82, 0.68, 0.52, 0.36, 0.22, 0.12]) {
       const photo = canvas.toDataURL('image/jpeg', quality)
-      if (jpegSize(photo) <= MAX_JPEG_BYTES && photo.length - 'data:image/jpeg;base64,'.length <= 16384) return photo
+      if (jpegSize(photo) <= MAX_JPEG_BYTES && photo.length - 'data:image/jpeg;base64,'.length <= 48000) return photo
     }
-    throw new Error('This image cannot fit the 12 KiB photo limit. Choose a simpler image.')
+    throw new Error('This image cannot fit the 32 KiB photo limit. Choose a simpler image.')
   } finally {
     image.close()
   }

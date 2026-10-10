@@ -1,6 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MAX_JPEG_BYTES, PHOTO_SIZES, cropBounds, jpegSize, preparePhoto, savedPhotoFile } from '../portal/photo.mjs'
+import {
+  MAX_JPEG_BYTES,
+  PHOTO_SIZES,
+  PROFILE_PHOTO_SIZE,
+  cropBounds,
+  jpegSize,
+  preparePhoto,
+  savedPhotoFile,
+} from '../portal/photo.mjs'
 
 const jpegHeader = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0])
 const file = (bytes = jpegHeader) => new Blob([bytes], { type: 'image/jpeg' })
@@ -129,6 +137,7 @@ test('preparePhoto renders every supported size and center-crops without stretch
         [100, 0, 200, 200, 0, 0, 64, 64],
         [100, 0, 200, 200, 0, 0, 96, 96],
         [100, 0, 200, 200, 0, 0, 128, 128],
+        [100, 0, 200, 200, 0, 0, 512, 512],
       ],
     )
     assert.equal(browser.calls.filter(([name]) => name === 'close').length, PHOTO_SIZES.length)
@@ -163,7 +172,7 @@ test('preparePhoto draws the selected crop at every supported output size', asyn
   }
 })
 
-test('preparePhoto defaults to 128 and center-crops tall images', async () => {
+test('preparePhoto defaults to a viewer-sized image and center-crops tall images', async () => {
   const drawCalls = []
   const browser = browserMock({
     width: 180,
@@ -176,8 +185,8 @@ test('preparePhoto defaults to 128 and center-crops tall images', async () => {
   })
   try {
     await preparePhoto(file())
-    assert.deepEqual(drawCalls[0], [browser.image, 0, 60, 180, 180, 0, 0, 128, 128])
-    assert.deepEqual([browser.canvas.width, browser.canvas.height], [128, 128])
+    assert.deepEqual(drawCalls[0], [browser.image, 0, 60, 180, 180, 0, 0, PROFILE_PHOTO_SIZE, PROFILE_PHOTO_SIZE])
+    assert.deepEqual([browser.canvas.width, browser.canvas.height], [PROFILE_PHOTO_SIZE, PROFILE_PHOTO_SIZE])
     assert.deepEqual(
       browser.calls.filter(([name]) => name === 'close'),
       [['close']],
@@ -256,7 +265,7 @@ test('preparePhoto closes a bitmap when no quality fits the JPEG cap', async () 
   const oversized = jpegDataUrl(new Uint8Array(MAX_JPEG_BYTES + 1).fill(42))
   const browser = browserMock({ dataUrl: oversized, context: { drawImage() {} } })
   try {
-    await assert.rejects(preparePhoto(file()), /12 KiB photo limit/)
+    await assert.rejects(preparePhoto(file()), /32 KiB photo limit/)
     assert.deepEqual(
       browser.calls.filter(([name]) => name === 'close'),
       [['close']],
@@ -266,7 +275,7 @@ test('preparePhoto closes a bitmap when no quality fits the JPEG cap', async () 
   }
 })
 
-test('preparePhoto tries smaller quality until output fits the 12 KiB JPEG cap', async () => {
+test('preparePhoto tries smaller quality until output fits the 32 KiB JPEG cap', async () => {
   const large = jpegDataUrl(new Uint8Array(MAX_JPEG_BYTES + 1).fill(42))
   const valid = jpegDataUrl(new Uint8Array(MAX_JPEG_BYTES).fill(42))
   let attempts = 0

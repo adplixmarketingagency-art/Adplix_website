@@ -4,9 +4,26 @@ import { webcrypto } from 'node:crypto'
 import { unzipSync, strFromU8 } from 'fflate'
 import { buildAnalytics } from '../src/portal/analytics.mjs'
 import { analyticsWorkbook } from '../src/portal/excel.mjs'
-import { sendBroadcastPush } from '../src/portal/notifications.mjs'
+import { pushConfiguration, sendBroadcastPush } from '../src/portal/notifications.mjs'
 
 const now = '2026-10-07T12:00:00Z'
+
+test('push configuration names missing Worker values without exposing secrets', () => {
+  assert.deepEqual(pushConfiguration({ VAPID_PUBLIC_KEY: 'public' }), {
+    configured: false,
+    missing: ['VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'],
+    message:
+      'Push is not configured on this server. Set VAPID_PRIVATE_KEY, VAPID_SUBJECT in the production Worker secrets.',
+  })
+  assert.equal(
+    pushConfiguration({
+      VAPID_PUBLIC_KEY: 'public',
+      VAPID_PRIVATE_KEY: 'private',
+      VAPID_SUBJECT: 'mailto:test@example.com',
+    }).configured,
+    true,
+  )
+})
 const snapshot = {
   serverNow: now,
   employees: [

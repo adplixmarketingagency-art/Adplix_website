@@ -236,3 +236,39 @@ test('push mutation refuses forced-password-change sessions, without storing a s
   assert.deepEqual(f.state.subscriptions, [])
   assert.deepEqual(f.state.audit, [])
 })
+
+test('push key reports the exact missing Worker configuration without exposing values', async () => {
+  const employee = {
+    id: 'emp',
+    role: 'Employee',
+    name: 'Emp',
+    employeeId: 'E',
+    email: 'emp@example.com',
+    active: true,
+    credentialVersion: 0,
+  }
+  const f = fixture([employee])
+  const response = await handlePortalApi(
+    new Request('https://portal.example/api/portal/push-key', { headers: asUser(f, employee) }),
+    { PORTAL_DB: f.db, VAPID_PUBLIC_KEY: 'public-only' },
+  )
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), {
+    publicKey: null,
+    configured: false,
+    missing: ['VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'],
+    message:
+      'Push is not configured on this server. Set VAPID_PRIVATE_KEY, VAPID_SUBJECT in the production Worker secrets.',
+  })
+  const subscribe = await handlePortalApi(
+    new Request('https://portal.example/api/portal/push-subscription', {
+      method: 'POST',
+      headers: asUser(f, employee),
+      body: JSON.stringify({ subscription: { endpoint: 'https://fcm.googleapis.com/send/test', keys: {} } }),
+    }),
+    { PORTAL_DB: f.db, VAPID_PUBLIC_KEY: 'public-only' },
+  )
+  assert.equal(subscribe.status, 503)
+  assert.match((await subscribe.json()).error, /VAPID_PRIVATE_KEY, VAPID_SUBJECT/)
+  assert.deepEqual(f.state.subscriptions, [])
+})

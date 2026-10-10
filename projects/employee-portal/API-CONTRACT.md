@@ -69,7 +69,7 @@ Admin snapshots additionally contain `registrations:[{id,name,email,status,creat
 
 `src/portal/excel.mjs`: `analyticsWorkbook(analytics,snapshot)` → Uint8Array of valid XLSX, untrusted text always inline strings (no formulas); sheets Summary, Employees, Tasks, Daily Updates, Absences, Definitions.
 
-`src/portal/notifications.mjs`: `sendBroadcastPush(env,subscriptions)` → delivery counts and expiredEndpoints without secret logs; `env.VAPID_PUBLIC_KEY`, `env.VAPID_PRIVATE_KEY`, `env.VAPID_SUBJECT` optional, generic notification payload. Store inbox even when push not configured. Backend removes expired endpoints after delivery.
+`src/portal/notifications.mjs`: `pushConfiguration(env)` reports whether all three VAPID values are present and names missing variables without exposing values; `sendBroadcastPush(env,subscriptions)` → delivery counts and expiredEndpoints without secret logs. `env.VAPID_PUBLIC_KEY`, `env.VAPID_PRIVATE_KEY`, `env.VAPID_SUBJECT` are optional, but must be supplied as a complete set for browser push. Store inbox even when push is not configured. Backend removes expired endpoints after delivery.
 
 ## Defaults for this first implementation
 

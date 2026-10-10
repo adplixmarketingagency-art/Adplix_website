@@ -12,7 +12,7 @@ import { analyticsPresetFilters } from './analytics-filters.mjs'
 import { parseJsonResponse } from './http.mjs'
 import { dailyStatusDisplay } from './daily-status.mjs'
 import { sortTasks, taskStateClass } from './task-presentation.mjs'
-import { preparePhoto, savedPhotoFile } from './photo.mjs'
+import { preparePhoto, PROFILE_PHOTO_SIZE, savedPhotoFile } from './photo.mjs'
 import { cropPhoto } from './photo-crop-dialog.mjs'
 import { serverOffset, todayLoginExpired } from './today-login.mjs'
 import { profileName, installProfileGlimpses } from './profile-glimpse.mjs'
@@ -493,7 +493,7 @@ function profile() {
   const controls = `<div class="profile-photo">${preview}<div class="photo-controls">
     <label for="profile-photo-input">Choose a profile photo</label>
     <input id="profile-photo-input" type="file" accept="image/png,image/jpeg,image/webp" ${state.photoBusy ? 'disabled' : ''} aria-describedby="profile-photo-hint">
-     <p class="fine" id="profile-photo-hint">PNG, JPEG or WebP, up to 5 MiB. Drag to position and zoom in the crop dialog, then save your 128 × 128 px photo.</p>
+     <p class="fine" id="profile-photo-hint">PNG, JPEG or WebP, up to 5 MiB. Drag to position and zoom in the crop dialog, then save your 512 × 512 px photo.</p>
      ${btn('Edit photo', 'photo-edit', '', 'small').replace('<button ', `<button ${!hasCropSource || state.photoBusy ? 'disabled' : ''} `)}
     <p class="fine" id="profile-photo-status" role="status" aria-live="polite">${esc(photoStatus())}</p>
     <div class="actions">${btn('Save photo', 'photo-save', '', 'small primary').replace('<button ', `<button ${state.photo === undefined || state.photoBusy ? 'disabled' : ''} `)}${btn('Remove photo', 'photo-remove', '', 'small').replace('<button ', `<button ${!displayed || state.photoBusy ? 'disabled' : ''} `)}${btn('Cancel changes', 'photo-cancel', '', 'small').replace('<button ', `<button ${state.photo === undefined || state.photoBusy ? 'disabled' : ''} `)}</div>
@@ -502,7 +502,7 @@ function profile() {
 }
 function photoStatus() {
   if (state.photoNotice) return state.photoNotice
-  if (state.photo !== undefined) return 'Preview: 128 × 128 px. Not saved yet.'
+  if (state.photo !== undefined) return `Preview: ${PROFILE_PHOTO_SIZE} × ${PROFILE_PHOTO_SIZE} px. Not saved yet.`
   return state.user?.profile?.photoDataUrl ? 'Saved photo. Edit photo to prepare a new crop.' : 'No photo selected yet.'
 }
 function syncPhotoControls() {
@@ -559,13 +559,13 @@ async function stagePhoto(file, crop = { zoom: 1, x: 0.5, y: 0.5 }) {
     }
     state.photoNotice = 'Preparing photo…'
     syncPhotoControls()
-    const photo = await preparePhoto(file, 128, selected)
+    const photo = await preparePhoto(file, PROFILE_PHOTO_SIZE, selected)
     if (!isCurrent()) return
     state.photo = photo
     // Retain the upload while staged, so editing it again does not compound JPEG loss.
     state.photoFile = file
     state.photoCrop = { ...selected }
-    state.photoNotice = 'Preview: 128 × 128 px. Not saved yet.'
+    state.photoNotice = `Preview: ${PROFILE_PHOTO_SIZE} × ${PROFILE_PHOTO_SIZE} px. Not saved yet.`
   } catch (error) {
     if (isCurrent()) state.photoNotice = error.message
   } finally {
@@ -1453,16 +1453,16 @@ async function checkPush() {
     return
   }
   try {
-    const { publicKey } = await json('/push-key')
+    const config = await json('/push-key')
     state.push = {
-      key: publicKey,
-      message: publicKey
+      key: config.publicKey,
+      message: config.publicKey
         ? Notification.permission === 'denied'
           ? 'Permission is blocked in browser settings.'
           : 'Optional notifications can be enabled here.'
-        : 'Push is not configured on this server.',
+        : config.message || 'Push is not configured on this server.',
     }
-    if (publicKey) {
+    if (config.publicKey) {
       const reg = await navigator.serviceWorker.getRegistration('/portal/')
       state.push.enabled = Boolean(await reg?.pushManager.getSubscription())
     }

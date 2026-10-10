@@ -1,5 +1,6 @@
-// Photos live in the bounded portal state document, so accept only small baseline JPEGs.
-export const MAX_PROFILE_PHOTO_BYTES = 12 * 1024
+// Photos live in the bounded portal state document, so accept only bounded baseline JPEGs.
+export const MAX_PROFILE_PHOTO_BYTES = 32 * 1024
+export const MAX_PROFILE_PHOTO_DIMENSION = 512
 const PREFIX = 'data:image/jpeg;base64,'
 const invalid = () => {
   throw Object.assign(new Error('Invalid profile photo.'), { status: 400 })
@@ -59,7 +60,14 @@ export function validateProfilePhoto(value) {
       const height = word(start + 1),
         width = word(start + 3),
         count = bytes[start + 5]
-      if (!width || !height || width > 128 || height > 128 || ![1, 3].includes(count) || end - start !== 6 + 3 * count)
+      if (
+        !width ||
+        !height ||
+        width > MAX_PROFILE_PHOTO_DIMENSION ||
+        height > MAX_PROFILE_PHOTO_DIMENSION ||
+        ![1, 3].includes(count) ||
+        end - start !== 6 + 3 * count
+      )
         invalid()
       const components = new Set(),
         tables = []

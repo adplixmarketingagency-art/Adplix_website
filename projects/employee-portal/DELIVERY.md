@@ -6,7 +6,7 @@ Authorized team names in task cards, team lists, daily updates, time-off request
 
 Snapshot `profileGlimpses` whitelists only team-visible summary fields and validated photos. Employees still cannot preview hidden Admins/inactive peers or access private email, phone or biography fields. Existing full-profile permissions are unchanged; registration requests do not become public profiles.
 
-Both Admins and Employees can choose/edit their own photo in a WhatsApp-style gesture crop dialog: **drag to position, pinch or scroll to zoom**, then **Use photo**. Plus/minus and arrow keys provide keyboard alternatives. No position sliders or pixel-size dropdown remain. Use photo stages a local preview; **Save photo** persists it and **Cancel changes** restores the saved image. The original upload is retained only while staged, preserving quality across repeated edits. Saved photos remain 128 × 128 baseline JPEGs under 12 KiB; enlarging an existing saved image cannot recover its original upload resolution. No original photo is retained remotely, no new external image host is used and the CSP remains unchanged.
+Both Admins and Employees can choose/edit their own photo in a WhatsApp-style gesture crop dialog: **drag to position, pinch or scroll to zoom**, then **Use photo**. Plus/minus and arrow keys provide keyboard alternatives. No position sliders or pixel-size dropdown remain. Use photo stages a local preview; **Save photo** persists it and **Cancel changes** restores the saved image. The original upload is retained only while staged, preserving quality across repeated edits. New saved photos are 512 × 512 baseline JPEGs under 32 KiB; the authenticated action body allows up to 50,000 characters for that bounded base64 payload while other JSON endpoints remain capped at 20,000. Existing 128 × 128 photos must be edited or re-uploaded to regain detail. No original photo is retained remotely, no new external image host is used and the CSP remains unchanged.
 
 Graphify was used locally to trace snapshot/name/profile relationships, then updated after implementation. `.graphifyignore` scopes extraction to portal source and synthetic tests; generated `graphify-out/` is ignored. The AST graph does not cover CSS or several symbol-free tests, and diagnostics reported three self-loop edges; source reads and browser checks supplied the missing validation. No remote semantic extraction or global graph merge was enabled.
 
@@ -133,7 +133,17 @@ The test creates/removes a private isolated local D1 instance with synthetic cre
 2. Apply `migrations/0001_portal.sql` to that explicitly selected production database. Bootstrap the first Admin with the private operator generator and apply its guarded SQL to that database; check one affected row. Do not reuse synthetic browser credentials.
 3. Configure build/deploy Node 22 and confirm the domain executes Worker routes for `/api/portal/*` and `/portal/*`. Keep `PORTAL_ALLOW_HTTP_LOCAL` absent in production. Use HTTPS.
 4. Deploy the `PORTAL_PASSWORDS` binding and `v1-password-hasher` SQLite-backed Durable Object migration from `wrangler.toml`. Scrypt uses N=32768/r=8/p=3 and substantial CPU/memory; it must run in the Durable Object, not the regular free Worker. Verify runtime outcomes and monitor Durable Object free quotas before enabling employees. Do not weaken the work factor or change billing without approval.
-5. Optionally provide `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` through Cloudflare secrets. Do not commit VAPID material or add private keys to frontend environment variables. Without them, inbox/broadcasts work but closed-tab browser push is unavailable.
+5. To enable closed-tab browser push, generate one P-256 VAPID key pair with approved tooling and provide the resulting values to the **production Worker**. Do not commit VAPID material or add private keys to frontend environment variables. From this repository, run the following commands and enter each value only at the Wrangler prompt:
+
+   ```sh
+   npx wrangler secret put VAPID_PUBLIC_KEY --config wrangler.toml
+   npx wrangler secret put VAPID_PRIVATE_KEY --config wrangler.toml
+   npx wrangler secret put VAPID_SUBJECT --config wrangler.toml
+   npx wrangler secret list --config wrangler.toml
+   npx wrangler deploy --config wrangler.toml
+   ```
+
+   `VAPID_SUBJECT` must be a contact URI such as `mailto:operator@example.com`; use the same public key for browser subscription and Worker delivery. The application reports the exact missing variable names to signed-in users and refuses to store new subscriptions until all three are present. Without them, inbox/broadcasts still work but closed-tab browser push is unavailable. The local `wrangler.portal.toml` intentionally has no VAPID values.
 6. Enable database backups/recovery, monitoring, privacy retention, and account security. Rehearse restore. No live backup or MFA setup was completed in this implementation.
 7. Run preview-to-production smoke checks with authorised accounts: login, changed passwords, roles, assignment, absence, report, push, and public website/contact form. Check headers, no-store responses, cookie flags, and absence of CSP errors.
 
