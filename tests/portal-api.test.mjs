@@ -251,6 +251,14 @@ test('recipient snapshots pick up notes and broadcasts without push, expose only
     ['New note', 'News'],
   )
   assert.deepEqual(
+    mine.notifications.map((n) => n.kind),
+    ['note', 'broadcast'],
+  )
+  assert.deepEqual(
+    f.state.notifications.map((n) => n.kind),
+    ['note', 'broadcast', 'broadcast', 'broadcast'],
+  )
+  assert.deepEqual(
     colleague.notifications.map((n) => n.title),
     ['News'],
   )
@@ -293,6 +301,14 @@ test('recipient snapshots pick up notes and broadcasts without push, expose only
   const legacy = await snapshot(employeeHeaders)
   assert.deepEqual(legacy.notes[0].author, { id: 'admin', name: 'Team Admin', role: 'Admin' })
   assert.equal(JSON.stringify(legacy.notes).includes('legacy-note-secret'), false)
+  f.state.notifications.push(
+    { id: 'legacy-task', employeeId: employee.id, title: 'Task approved', text: 'Done' },
+    { id: 'legacy-other', employeeId: employee.id, title: 'Unknown message', text: 'Private', kind: 'arbitrary' },
+  )
+  assert.deepEqual(
+    (await snapshot(employeeHeaders)).notifications.map((n) => n.kind),
+    ['task-approved', 'workspace'],
+  )
 })
 test('push mutation refuses forced-password-change sessions, without storing a subscription', async () => {
   const employee = {
@@ -364,15 +380,20 @@ const people = () => [
 const pushKeys = async () => {
   const pair = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
   const recipient = await webcrypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'])
+  const recipientPublic = Buffer.from(await webcrypto.subtle.exportKey('raw', recipient.publicKey))
+  const auth = webcrypto.getRandomValues(new Uint8Array(16))
   return {
+    recipient,
+    recipientPublic,
+    auth,
     env: {
       VAPID_PUBLIC_KEY: Buffer.from(await webcrypto.subtle.exportKey('raw', pair.publicKey)).toString('base64url'),
       VAPID_PRIVATE_KEY: (await webcrypto.subtle.exportKey('jwk', pair.privateKey)).d,
       VAPID_SUBJECT: 'mailto:test@example.com',
     },
     keys: {
-      p256dh: Buffer.from(await webcrypto.subtle.exportKey('raw', recipient.publicKey)).toString('base64url'),
-      auth: Buffer.from(webcrypto.getRandomValues(new Uint8Array(16))).toString('base64url'),
+      p256dh: recipientPublic.toString('base64url'),
+      auth: Buffer.from(auth).toString('base64url'),
     },
   }
 }
@@ -387,6 +408,143 @@ const pushCall = (f, env, path, headers, body, context) =>
     { PORTAL_DB: f.db, ...env },
     context,
   )
+
+async function decryptProviderPayload(body, { recipient, recipientPublic, auth }) {
+  const subtle = webcrypto.subtle
+  const salt = body.subarray(0, 16)
+  const senderPublic = body.subarray(21, 21 + body[20])
+  const senderKey = await subtle.importKey('raw', senderPublic, { name: 'ECDH', namedCurve: 'P-256' }, false, [])
+  const shared = await subtle.deriveBits({ name: 'ECDH', public: senderKey }, recipient.privateKey, 256)
+  const expand = async (material, hkdfSalt, info, length) => {
+    const key = await subtle.importKey('raw', material, 'HKDF', false, ['deriveBits'])
+    return Buffer.from(
+      await subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: hkdfSalt, info }, key, length * 8),
+    )
+  }
+  const utf8 = (text) => Buffer.from(text, 'utf8')
+  const ikm = await expand(shared, auth, Buffer.concat([utf8('WebPush: info\0'), recipientPublic, senderPublic]), 32)
+  const cek = await expand(ikm, salt, utf8('Content-Encoding: aes128gcm\0'), 16)
+  const nonce = await expand(ikm, salt, utf8('Content-Encoding: nonce\0'), 12)
+  const key = await subtle.importKey('raw', cek, 'AES-GCM', false, ['decrypt'])
+  const plaintext = Buffer.from(await subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, body.subarray(21 + body[20])))
+  return JSON.parse(plaintext.subarray(0, plaintext.indexOf(2)).toString('utf8'))
+}
+
+test('leave and permission workflow alerts reach only active role owners and use private-safe typed device payloads', async () => {
+  const users = [
+    { id: 'admin', role: 'Admin', name: 'Reviewer', active: true, credentialVersion: 0 },
+    { id: 'admin2', role: 'Admin', name: 'Reviewer 2', active: true, credentialVersion: 0 },
+    { id: 'disabled', role: 'Admin', name: 'Disabled reviewer', active: false, credentialVersion: 0 },
+    { id: 'employee', role: 'Employee', name: 'Requester', active: true, credentialVersion: 0 },
+    { id: 'other', role: 'Employee', name: 'Other employee', active: true, credentialVersion: 0 },
+  ]
+  const f = fixture(users)
+  const keys = await pushKeys()
+  const credentials = new Map(
+    users
+      .slice(0, 2)
+      .concat(users.slice(3))
+      .map((user, i) => [user.id, asUser(f, user, String.fromCharCode(97 + i).repeat(64))]),
+  )
+  for (const user of users)
+    f.state.subscriptions.push({ employeeId: user.id, subscription: device(keys.keys, user.id) })
+  const outbound = []
+  const pending = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url, options) => {
+    const payload = await decryptProviderPayload(Buffer.from(await new Response(options.body).arrayBuffer()), keys)
+    assert.deepEqual(Object.keys(payload).sort(), ['body', 'kind', 'title'])
+    assert.equal(JSON.stringify(payload).includes('PRIVATE_ABSENCE_REASON'), false)
+    assert.equal(JSON.stringify(payload).includes('PRIVATE_DECISION_NOTE'), false)
+    outbound.push({ url, payload })
+    return { ok: true, status: 201 }
+  }
+  const send = async (actor, action) => {
+    const result = await pushCall(f, keys.env, 'actions', credentials.get(actor), action, {
+      waitUntil: (promise) => pending.push(promise),
+    })
+    await Promise.all(pending.splice(0))
+    return result
+  }
+  try {
+    for (const [kind, status] of [
+      ['leave', 'Approved'],
+      ['leave', 'Rejected'],
+      ['permission', 'Approved'],
+      ['permission', 'Rejected'],
+    ]) {
+      const request =
+        kind === 'leave'
+          ? { start: '2026-10-11', end: '2026-10-12' }
+          : { start: '2026-10-11T07:00:00Z', end: '2026-10-11T08:00:00Z' }
+      assert.equal(
+        (await send('employee', { type: 'absence.request', kind, reason: 'PRIVATE_ABSENCE_REASON', ...request }))
+          .status,
+        200,
+      )
+      const absence = f.state.absences.at(-1)
+      assert.deepEqual(
+        outbound
+          .splice(0)
+          .map((item) => [item.url, item.payload.kind])
+          .sort(),
+        [
+          [device(keys.keys, 'admin').endpoint, `${kind}-requested`],
+          [device(keys.keys, 'admin2').endpoint, `${kind}-requested`],
+        ].sort(),
+      )
+      const beforeDecision = f.state.notifications.length
+      assert.equal((await send('admin', { type: 'absence.decide', id: absence.id, status: 'Invalid' })).status, 409)
+      assert.equal(f.state.notifications.length, beforeDecision)
+      assert.deepEqual(outbound, [])
+      assert.equal(
+        (await send('admin', { type: 'absence.decide', id: absence.id, status, decisionNote: 'PRIVATE_DECISION_NOTE' }))
+          .status,
+        200,
+      )
+      assert.deepEqual(
+        outbound.splice(0).map((item) => [item.url, item.payload.kind]),
+        [[device(keys.keys, 'employee').endpoint, `${kind}-${status.toLowerCase()}`]],
+      )
+      assert.equal(f.state.notifications.at(-1).title, `Your ${kind} request ${status.toLowerCase()}`)
+      assert.equal(f.state.notifications.at(-1).senderId, 'admin')
+      const notificationCount = f.state.notifications.length
+      assert.equal((await send('admin', { type: 'absence.decide', id: absence.id, status })).status, 409)
+      assert.equal(f.state.notifications.length, notificationCount)
+      assert.deepEqual(outbound, [])
+    }
+    assert.deepEqual(
+      f.state.notifications.filter((n) => n.employeeId === 'disabled'),
+      [],
+    )
+    assert.deepEqual(
+      f.state.notifications.filter((n) => n.employeeId === 'other'),
+      [],
+    )
+    assert.deepEqual(
+      f.state.notifications.filter((n) => n.employeeId === 'employee').map((n) => n.kind),
+      ['leave-approved', 'leave-rejected', 'permission-approved', 'permission-rejected'],
+    )
+    const adminInbox = (await (await callWith(f, 'snapshot', 'GET', credentials.get('admin'))).json()).notifications
+    assert.deepEqual(
+      adminInbox.map((n) => n.kind),
+      ['leave-requested', 'leave-requested', 'permission-requested', 'permission-requested'],
+    )
+    assert.ok(adminInbox.every((n) => n.sender?.id === 'employee' && n.readAt === null))
+    const first = adminInbox[0].id
+    assert.equal((await send('admin2', { type: 'notification.read', id: first })).status, 404)
+    assert.equal((await send('other', { type: 'notification.read', id: first })).status, 404)
+    assert.equal((await send('admin', { type: 'notification.read', id: first })).status, 200)
+    assert.ok((await (await callWith(f, 'snapshot', 'GET', credentials.get('admin'))).json()).notifications[0].readAt)
+    assert.equal(
+      (await (await callWith(f, 'snapshot', 'GET', credentials.get('admin2'))).json()).notifications[0].readAt,
+      null,
+    )
+    assert.deepEqual(outbound, [])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
 
 test('device subscriptions preserve other devices, transfer shared endpoint ownership and revoke only own endpoint', async () => {
   const f = fixture(people())
@@ -530,6 +688,7 @@ test('only committed new inbox rows push to active owners, including Admin workf
       200,
     )
     assert.deepEqual(requests.splice(0).sort(), [b.endpoint, c.endpoint].sort())
+    assert.equal(f.state.notifications.at(-1).kind, 'task-assigned')
     const task = f.state.tasks[0]
     assert.equal(
       (await send(employee, { type: 'task.transition', id: task.id, version: task.version, state: 'In-progress' }))
@@ -537,6 +696,33 @@ test('only committed new inbox rows push to active owners, including Admin workf
       200,
     )
     assert.deepEqual(requests.splice(0), [])
+    assert.equal(
+      (
+        await send(employee, {
+          type: 'task.transition',
+          id: task.id,
+          version: f.state.tasks[0].version,
+          state: 'Completed',
+        })
+      ).status,
+      200,
+    )
+    assert.deepEqual(requests.splice(0), [a.endpoint])
+    assert.ok(f.state.notifications.filter((n) => n.taskId === task.id).every((n) => n.kind === 'task-completed'))
+    assert.equal(
+      (
+        await send(admin, {
+          type: 'task.transition',
+          id: task.id,
+          version: f.state.tasks[0].version,
+          state: 'In-progress',
+          reason: 'PRIVATE_REVISION_REASON',
+        })
+      ).status,
+      200,
+    )
+    assert.deepEqual(requests.splice(0).sort(), [b.endpoint, c.endpoint].sort())
+    assert.equal(f.state.notifications.at(-1).kind, 'task-revision')
     assert.equal(
       (
         await send(employee, {
@@ -562,13 +748,41 @@ test('only committed new inbox rows push to active owners, including Admin workf
       200,
     )
     assert.deepEqual(requests.splice(0).sort(), [b.endpoint, c.endpoint].sort())
+    assert.equal(f.state.notifications.at(-1).kind, 'task-approved')
+    assert.equal(
+      (
+        await send(admin, {
+          type: 'task.deadline',
+          id: task.id,
+          version: f.state.tasks[0].version,
+          deadline: '2026-12-02T12:00:00Z',
+        })
+      ).status,
+      200,
+    )
+    assert.deepEqual(requests.splice(0).sort(), [b.endpoint, c.endpoint].sort())
+    assert.equal(f.state.notifications.at(-1).kind, 'task-deadline')
+    assert.equal(
+      (
+        await send(admin, {
+          type: 'task.create',
+          assigneeId: 'admin',
+          clientId: 'client',
+          title: 'Admin-owned',
+          deadline: '2026-12-01T12:00:00Z',
+        })
+      ).status,
+      200,
+    )
+    assert.deepEqual(requests.splice(0), [a.endpoint])
+    assert.equal(f.state.notifications.at(-1).kind, 'task-assigned')
     assert.equal((await send(admin, { type: 'note.create', text: 'Private', recipientIds: ['employee'] })).status, 200)
     assert.deepEqual(requests.splice(0).sort(), [b.endpoint, c.endpoint].sort())
     assert.equal(
       (await send(admin, { type: 'broadcast.create', title: 'News', text: 'Update', recipientIds: [] })).status,
       200,
     )
-    assert.deepEqual(requests.splice(0).sort(), [b.endpoint, c.endpoint, d.endpoint].sort())
+    assert.deepEqual(requests.splice(0).sort(), [a.endpoint, b.endpoint, c.endpoint, d.endpoint].sort())
     const before = f.state.notifications.length
     assert.equal((await send(other, { type: 'notification.read', id: f.state.notifications[0].id })).status, 404)
     assert.equal((await send(employee, { type: 'notification.read', id: f.state.notifications[0].id })).status, 200)
@@ -691,7 +905,7 @@ test('provider failure never rolls back inbox; ambiguous shared ownership is nev
     )
     await Promise.all(pending)
     assert.equal(calls, 0)
-    assert.equal(f.state.notifications.length, 2)
+    assert.equal(f.state.notifications.length, 3)
     f.state.subscriptions.pop()
     assert.equal(
       (
@@ -708,7 +922,7 @@ test('provider failure never rolls back inbox; ambiguous shared ownership is nev
     )
     await Promise.all(pending)
     assert.equal(calls, 1)
-    assert.equal(f.state.notifications.length, 3)
+    assert.equal(f.state.notifications.length, 4)
   } finally {
     globalThis.fetch = original
   }

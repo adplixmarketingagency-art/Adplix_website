@@ -11,6 +11,42 @@ const TRUSTED = [
 
 const VAPID_KEYS = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT']
 
+// Device alerts deliberately contain no inbox content or caller-supplied copy.
+const ALERTS = Object.freeze({
+  note: { title: 'Note', body: 'You have a new note. Sign in to view it.' },
+  broadcast: { title: 'Broadcast', body: 'You have a new broadcast. Sign in to view it.' },
+  'task-assigned': { title: 'New task assigned', body: 'A new task was assigned to you. Sign in to view it.' },
+  'task-updated': { title: 'Task updated', body: 'A task was updated. Sign in to view it.' },
+  'absence-updated': { title: 'Time-off request updated', body: 'A time-off request was updated. Sign in to view it.' },
+  'leave-requested': { title: 'New leave request', body: 'A new leave request needs review. Sign in to view it.' },
+  'permission-requested': {
+    title: 'New permission request',
+    body: 'A new permission request needs review. Sign in to view it.',
+  },
+  'leave-approved': {
+    title: 'Your leave request approved',
+    body: 'Your leave request was approved. Sign in to view it.',
+  },
+  'leave-rejected': {
+    title: 'Your leave request rejected',
+    body: 'Your leave request was rejected. Sign in to view it.',
+  },
+  'permission-approved': {
+    title: 'Your permission request approved',
+    body: 'Your permission request was approved. Sign in to view it.',
+  },
+  'permission-rejected': {
+    title: 'Your permission request rejected',
+    body: 'Your permission request was rejected. Sign in to view it.',
+  },
+  'task-completed': { title: 'Task completed', body: 'A task was completed and needs review. Sign in to view it.' },
+  'task-approved': { title: 'Your task approved', body: 'Your task was approved. Sign in to view it.' },
+  'task-revision': { title: 'Task needs revision', body: 'Your task needs revision. Sign in to view it.' },
+  'task-deadline': { title: 'Task deadline changed', body: 'A task deadline changed. Sign in to view it.' },
+  workspace: { title: 'Adplix workspace', body: 'You have a new workspace update. Sign in to view it.' },
+  test: { title: 'Test notification', body: 'This is a test device notification from Adplix.' },
+})
+
 export function pushConfiguration(env) {
   const missing = VAPID_KEYS.filter((key) => typeof env?.[key] !== 'string' || !env[key].trim())
   return {
@@ -38,7 +74,7 @@ function trustedEndpoint(value) {
   }
 }
 
-export async function sendBroadcastPush(env, subscriptions = []) {
+export async function sendBroadcastPush(env, subscriptions = [], { kind } = {}) {
   const counts = {
     sent: 0,
     failed: 0,
@@ -54,9 +90,13 @@ export async function sendBroadcastPush(env, subscriptions = []) {
     return counts
   }
   const vapid = { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT }
+  const safeKind = (value) => (typeof value === 'string' && Object.hasOwn(ALERTS, value) ? value : null)
   // Five concurrent sends avoid 20 sequential provider timeouts outliving waitUntil.
   // The total is bounded for the small portal's Worker/subrequest budget.
-  const send = async (subscription) => {
+  const send = async (entry) => {
+    const envelope = entry && typeof entry === 'object' && Object.hasOwn(entry, 'subscription')
+    const subscription = envelope ? entry.subscription : entry
+    const selectedKind = (envelope && safeKind(entry.kind)) || safeKind(kind) || 'workspace'
     if (!trustedEndpoint(subscription?.endpoint)) {
       counts.skipped++
       return
@@ -65,7 +105,7 @@ export async function sendBroadcastPush(env, subscriptions = []) {
     try {
       payload = await buildPushPayload(
         {
-          data: JSON.stringify({ title: 'Adplix Portal', body: 'You have a new notification.' }),
+          data: JSON.stringify({ kind: selectedKind, ...ALERTS[selectedKind] }),
           options: { ttl: 3600 },
         },
         subscription,

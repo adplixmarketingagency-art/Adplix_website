@@ -455,6 +455,7 @@ test('missing password namespace blocks account creation, reset and rotation wit
     credentialVersion: 0,
   }
   f.state().users.push(employee)
+  f.state().users.push({ ...admin, id: 'another-admin', email: 'another-admin@example.test', employeeId: 'ADMIN-002' })
   const employeeAuth = await f.as(employee)
   const before = structuredClone(f.state())
   const sessionCount = f.sessions.size
@@ -478,6 +479,7 @@ test('missing password namespace blocks account creation, reset and rotation wit
       auth,
     ],
     ['actions', { type: 'employee.resetPassword', id: employee.id, password: replacement }, auth],
+    ['actions', { type: 'admin.resetPassword', id: 'another-admin', password: replacement }, auth],
     ['password', { currentPassword: password, newPassword: replacement }, employeeAuth],
   ]) {
     const response = await f.request(path, body, credentials)
@@ -490,6 +492,189 @@ test('missing password namespace blocks account creation, reset and rotation wit
   assert.equal(f.passwords.calls.hash, 0)
   assert.equal(f.passwords.calls.verify, 0)
 })
+
+test('Admin and Employee recipients receive targeted and all-team notes and broadcasts; disabled targets are rejected', async () => {
+  const f = fixture()
+  const { admin, auth } = await withAdmin(f)
+  const second = { ...admin, id: 'second', email: 'second@example.test', employeeId: 'A2', name: 'Second Admin' }
+  const employee = { ...admin, id: 'employee', email: 'employee@example.test', employeeId: 'E1', role: 'Employee' }
+  const inactive = { ...employee, id: 'inactive', email: 'inactive@example.test', employeeId: 'E2', active: false }
+  f.state().users.push(second, employee, inactive)
+  const secondAuth = await f.as(second)
+  const employeeAuth = await f.as(employee)
+  const send = (body) => f.request('actions', body, auth)
+  assert.equal((await send({ type: 'note.create', text: 'Admin only', recipientIds: ['second'] })).status, 200)
+  assert.equal(
+    (
+      await send({
+        type: 'broadcast.create',
+        title: 'Targeted',
+        text: 'To two roles',
+        recipientIds: ['second', 'employee', 'second'],
+      })
+    ).status,
+    200,
+  )
+  assert.equal((await send({ type: 'note.create', text: 'Everyone', recipientIds: [] })).status, 200)
+  assert.equal((await send({ type: 'broadcast.create', title: 'All', text: 'All team', recipientIds: [] })).status, 200)
+  const recipientKinds = (id) =>
+    f
+      .state()
+      .notifications.filter((n) => n.employeeId === id)
+      .map((n) => n.kind)
+  assert.deepEqual(recipientKinds(second.id), ['note', 'broadcast', 'note', 'broadcast'])
+  assert.deepEqual(recipientKinds(employee.id), ['broadcast', 'note', 'broadcast'])
+  assert.deepEqual(recipientKinds(admin.id), ['note', 'broadcast'])
+  assert.deepEqual(recipientKinds(inactive.id), [])
+  const adminSnapshot = await (await f.request('snapshot', undefined, auth)).json()
+  const secondSnapshot = await (await f.request('snapshot', undefined, secondAuth)).json()
+  const employeeSnapshot = await (await f.request('snapshot', undefined, employeeAuth)).json()
+  assert.equal(adminSnapshot.notes.length, 2, 'publisher retains management access')
+  assert.deepEqual(
+    secondSnapshot.notes.map((n) => n.text),
+    ['Admin only', 'Everyone'],
+  )
+  assert.deepEqual(
+    employeeSnapshot.notes.map((n) => n.text),
+    ['Everyone'],
+  )
+  assert.equal(secondSnapshot.notifications[0].kind, 'note')
+  assert.equal(
+    (await f.request('actions', { type: 'notification.read', id: secondSnapshot.notifications[0].id }, secondAuth))
+      .status,
+    200,
+  )
+  const before = structuredClone(f.state())
+  for (const type of ['note.create', 'broadcast.create']) {
+    const response = await send({ type, title: 'Denied', text: 'Denied', recipientIds: ['employee', 'inactive'] })
+    assert.equal(response.status, 400)
+    assert.deepEqual(f.state(), before)
+  }
+  assert.equal(
+    (
+      await f.request(
+        'actions',
+        { type: 'broadcast.create', title: 'Denied', text: 'Denied', recipientIds: [] },
+        employeeAuth,
+      )
+    ).status,
+    403,
+  )
+})
+
+test('Admin reset and Employee reset revoke all target sessions and push without enabling disabled users', async () => {
+  const f = fixture()
+  const { admin, auth } = await withAdmin(f)
+  const second = { ...admin, id: 'second', email: 'second@example.test', employeeId: 'A2' }
+  const employee = {
+    ...admin,
+    id: 'employee',
+    email: 'employee@example.test',
+    employeeId: 'E1',
+    role: 'Employee',
+    active: false,
+    deactivatedAt: isoDay(),
+  }
+  f.state().users.push(second, employee)
+  const oldSecond = await f.as(second)
+  const oldEmployee = await f.as(employee)
+  f.state().subscriptions.push(
+    { employeeId: second.id, subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/admin-phone' } },
+    { employeeId: second.id, subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/admin-desktop' } },
+    { employeeId: employee.id, subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/employee' } },
+    { employeeId: admin.id, subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/owner' } },
+  )
+  const send = (body, credentials = auth) => f.request('actions', body, credentials)
+  const before = structuredClone(f.state())
+  for (const body of [
+    { type: 'admin.resetPassword', id: admin.id, password: replacement },
+    { type: 'admin.resetPassword', id: employee.id, password: replacement },
+    { type: 'employee.resetPassword', id: second.id, password: replacement },
+  ])
+    assert.equal((await send(body)).status, body.id === admin.id ? 403 : 404)
+  assert.equal(
+    (await send({ type: 'admin.resetPassword', id: second.id, password: replacement }, oldSecond)).status,
+    403,
+  )
+  assert.deepEqual(f.state(), before)
+  assert.equal(f.passwords.calls.hash, 0)
+  assert.equal((await send({ type: 'admin.resetPassword', id: second.id, password: replacement })).status, 200)
+  assert.equal((await f.request('snapshot', undefined, oldSecond)).status, 401)
+  assert.equal(second.credentialVersion, 0, 'stale in-memory fixture is not mutated')
+  const updatedAdmin = f.state().users.find((u) => u.id === second.id)
+  assert.equal(updatedAdmin.credentialVersion, 1)
+  assert.equal(updatedAdmin.mustChangePassword, true)
+  assert.equal(await verifyPassword(replacement, updatedAdmin.passwordHash), true)
+  assert.equal(f.sessions.size, 2, 'other sessions are retained')
+  assert.equal((await send({ type: 'employee.resetPassword', id: employee.id, password: replacement })).status, 200)
+  const updatedEmployee = f.state().users.find((u) => u.id === employee.id)
+  assert.equal(updatedEmployee.active, false)
+  assert.ok(updatedEmployee.deactivatedAt)
+  assert.equal(updatedEmployee.mustChangePassword, true)
+  assert.equal(updatedEmployee.credentialVersion, 1)
+  assert.equal(await verifyPassword(replacement, updatedEmployee.passwordHash), true)
+  assert.equal(f.sessions.size, 1)
+  assert.deepEqual(
+    f.state().subscriptions.map((x) => x.employeeId),
+    [admin.id],
+  )
+  assert.equal((await f.request('login', { email: employee.email, password: replacement })).status, 401)
+  assert.equal((await f.request('snapshot', undefined, oldEmployee)).status, 401)
+  assert.deepEqual(
+    f
+      .state()
+      .audit.slice(-2)
+      .map((x) => [x.action, x.subjectId]),
+    [
+      ['admin.resetPassword', second.id],
+      ['employee.resetPassword', employee.id],
+    ],
+  )
+  assert.equal(JSON.stringify(f.state().audit).includes(replacement), false)
+  assert.equal(f.passwords.calls.hash, 2)
+})
+
+test('reactivation preserves identity and history, invalidates old credentials and remains role checked', async () => {
+  const f = fixture()
+  const { admin, auth } = await withAdmin(f)
+  const second = { ...admin, id: 'second', email: 'second@example.test', employeeId: 'A2' }
+  const employee = { ...admin, id: 'employee', email: 'employee@example.test', employeeId: 'E1', role: 'Employee' }
+  f.state().users.push(second, employee)
+  const secondAuth = await f.as(second)
+  const employeeAuth = await f.as(employee)
+  f.state().updates.push({ id: 'old-update', employeeId: employee.id, date: '2026-09-28', text: 'Preserved' })
+  const originalCount = f.state().users.length
+  assert.equal((await f.request('actions', { type: 'admin.reactivate', id: second.id }, employeeAuth)).status, 403)
+  assert.equal((await f.request('actions', { type: 'employee.reactivate', id: employee.id }, employeeAuth)).status, 403)
+  assert.equal((await f.request('actions', { type: 'employee.deactivate', id: second.id }, auth)).status, 200)
+  assert.equal((await f.request('actions', { type: 'employee.deactivate', id: employee.id }, auth)).status, 200)
+  assert.equal((await f.request('snapshot', undefined, secondAuth)).status, 401)
+  assert.equal((await f.request('snapshot', undefined, employeeAuth)).status, 401)
+  for (const [type, id] of [
+    ['employee.reactivate', second.id],
+    ['admin.reactivate', employee.id],
+  ])
+    assert.equal((await f.request('actions', { type, id }, auth)).status, 404)
+  assert.equal((await f.request('actions', { type: 'employee.reactivate', id: employee.id }, employeeAuth)).status, 401)
+  assert.equal((await f.request('actions', { type: 'employee.reactivate', id: employee.id }, auth)).status, 200)
+  assert.equal((await f.request('actions', { type: 'admin.reactivate', id: second.id }, auth)).status, 200)
+  assert.equal((await f.request('actions', { type: 'admin.reactivate', id: second.id }, auth)).status, 404)
+  assert.equal(f.state().users.length, originalCount)
+  assert.equal(f.state().updates[0].text, 'Preserved')
+  assert.equal(f.state().users.find((u) => u.id === employee.id).credentialVersion, 2)
+  assert.equal(f.state().users.find((u) => u.id === second.id).credentialVersion, 2)
+  assert.equal((await f.request('snapshot', undefined, secondAuth)).status, 401)
+  assert.equal((await f.request('snapshot', undefined, employeeAuth)).status, 401)
+  for (const id of [employee.id, second.id]) {
+    const user = f.state().users.find((u) => u.id === id)
+    assert.equal(user.deactivatedAt, null)
+    assert.deepEqual(user.inactivePeriods, [{ from: isoDay(), to: isoDay() }])
+  }
+  assert.equal((await f.request('actions', { type: 'employee.deactivate', id: second.id }, auth)).status, 200)
+  assert.equal((await f.request('actions', { type: 'employee.deactivate', id: admin.id }, auth)).status, 409)
+})
+
+const isoDay = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
 
 test('Admins can assign Admin tasks and approvals require a rating', async (t) => {
   const f = fixture()
@@ -569,6 +754,71 @@ test('Admins can assign Admin tasks and approvals require a rating', async (t) =
   assert.equal(approved.rating, 5)
   assert.equal(approved.ratingNote, 'Clear delivery')
   assert.equal(approved.ratedBy, admin.id)
+})
+
+test('Admin task completion notifies other active Admins without a self-review alert', async (t) => {
+  const f = fixture()
+  t.after(() => f.close())
+  const { admin, auth } = await withAdmin(f)
+  const state = f.state()
+  state.users.push({ ...admin, id: 'reviewer', employeeId: 'ADMIN-REVIEW', email: 'reviewer@example.test' })
+  state.clients.push({ id: 'client', name: 'Client', active: true })
+  f.save(state)
+  assert.equal(
+    (
+      await f.request(
+        'actions',
+        {
+          type: 'task.create',
+          title: 'Admin delivery',
+          description: 'Private description',
+          assigneeId: admin.id,
+          clientId: 'client',
+          deadline: '2026-12-01T12:00:00Z',
+        },
+        auth,
+      )
+    ).status,
+    200,
+  )
+  const task = f.state().tasks.at(-1)
+  assert.equal(
+    (
+      await f.request(
+        'actions',
+        {
+          type: 'task.transition',
+          id: task.id,
+          state: 'In-progress',
+          version: task.version,
+        },
+        auth,
+      )
+    ).status,
+    200,
+  )
+  assert.equal(
+    (
+      await f.request(
+        'actions',
+        {
+          type: 'task.transition',
+          id: task.id,
+          state: 'Completed',
+          version: task.version + 1,
+        },
+        auth,
+      )
+    ).status,
+    200,
+  )
+  const alerts = f.state().notifications.filter((n) => n.kind === 'task-completed')
+  assert.deepEqual(
+    alerts.map((n) => n.employeeId),
+    ['reviewer'],
+  )
+  assert.equal(alerts[0].senderId, admin.id)
+  assert.equal(alerts[0].text.includes('Private description'), false)
 })
 
 test('Employee completion notifies every active Admin, without exposing description', async (t) => {

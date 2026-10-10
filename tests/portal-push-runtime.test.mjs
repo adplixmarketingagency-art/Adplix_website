@@ -73,8 +73,8 @@ test('workerd prepares and sends an interoperable synthetic Web Push payload', a
         import { sendBroadcastPush } from './src/portal/notifications.mjs';
         export default {
           async fetch(request, env) {
-            const subscription = await request.json();
-             return Response.json(await sendBroadcastPush(env, [subscription]));
+            const { subscription, entries, kind, title, body } = await request.json();
+            return Response.json(await sendBroadcastPush(env, entries || [subscription], { kind, title, body }));
           },
         };`,
       resolveDir: process.cwd(),
@@ -117,10 +117,16 @@ test('workerd prepares and sends an interoperable synthetic Web Push payload', a
     }),
   )
   try {
-    const dispatch = async (path) => {
+    const dispatch = async (path, kind, entries) => {
       const response = await mf.dispatchFetch(`http://localhost${path}`, {
         method: 'POST',
-        body: JSON.stringify(keys.subscription),
+        body: JSON.stringify({
+          subscription: keys.subscription,
+          entries,
+          kind,
+          title: 'Private task title',
+          body: 'Private credentials',
+        }),
         headers: { 'content-type': 'application/json' },
       })
       if (response.status !== 200) assert.fail(`workerd returned HTTP ${response.status}: ${await response.text()}`)
@@ -162,9 +168,73 @@ test('workerd prepares and sends an interoperable synthetic Web Push payload', a
       'recipient can verify VAPID ES256 signature',
     )
     assert.deepEqual(await decryptPush(push.body, keys), {
-      title: 'Adplix Portal',
-      body: 'You have a new notification.',
+      kind: 'workspace',
+      title: 'Adplix workspace',
+      body: 'You have a new workspace update. Sign in to view it.',
     })
+    for (const [kind, title, body] of [
+      ['note', 'Note', 'You have a new note. Sign in to view it.'],
+      ['broadcast', 'Broadcast', 'You have a new broadcast. Sign in to view it.'],
+      ['task-assigned', 'New task assigned', 'A new task was assigned to you. Sign in to view it.'],
+      ['task-updated', 'Task updated', 'A task was updated. Sign in to view it.'],
+      ['absence-updated', 'Time-off request updated', 'A time-off request was updated. Sign in to view it.'],
+      ['leave-requested', 'New leave request', 'A new leave request needs review. Sign in to view it.'],
+      ['permission-requested', 'New permission request', 'A new permission request needs review. Sign in to view it.'],
+      ['leave-approved', 'Your leave request approved', 'Your leave request was approved. Sign in to view it.'],
+      ['leave-rejected', 'Your leave request rejected', 'Your leave request was rejected. Sign in to view it.'],
+      [
+        'permission-approved',
+        'Your permission request approved',
+        'Your permission request was approved. Sign in to view it.',
+      ],
+      [
+        'permission-rejected',
+        'Your permission request rejected',
+        'Your permission request was rejected. Sign in to view it.',
+      ],
+      ['task-completed', 'Task completed', 'A task was completed and needs review. Sign in to view it.'],
+      ['task-approved', 'Your task approved', 'Your task was approved. Sign in to view it.'],
+      ['task-revision', 'Task needs revision', 'Your task needs revision. Sign in to view it.'],
+      ['task-deadline', 'Task deadline changed', 'A task deadline changed. Sign in to view it.'],
+      ['test', 'Test notification', 'This is a test device notification from Adplix.'],
+      ['invalid-private-kind', 'Adplix workspace', 'You have a new workspace update. Sign in to view it.'],
+    ]) {
+      requests.length = 0
+      assert.equal((await dispatch('/send', kind)).sent, 1)
+      const decrypted = await decryptPush(requests[0].body, keys)
+      assert.equal(decrypted.kind, kind === 'invalid-private-kind' ? 'workspace' : kind)
+      assert.equal(decrypted.title, title)
+      assert.equal(decrypted.body, body)
+      assert.ok(!JSON.stringify(decrypted).includes('Private'))
+    }
+    requests.length = 0
+    const device = (index) => ({ ...keys.subscription, endpoint: `${endpoint}-${index}` })
+    const mixed = [
+      { subscription: device(0), kind: 'leave-requested', title: 'Private note', body: 'Private credentials' },
+      { ...device(1), kind: 'leave-approved', title: 'Private note', body: 'Private credentials' },
+      { subscription: device(2), kind: 'not-a-kind', title: 'Private note' },
+      { subscription: device(3), kind: 'task-revision' },
+      { subscription: device(4), kind: 'test' },
+    ]
+    const mixedResult = await dispatch('/send', 'broadcast', mixed)
+    assert.equal(mixedResult.sent, mixed.length)
+    assert.equal(mixedResult.failed, 0)
+    assert.equal(requests.length, mixed.length)
+    const expected = [
+      ['leave-requested', 'New leave request'],
+      ['broadcast', 'Broadcast'],
+      ['broadcast', 'Broadcast'],
+      ['task-revision', 'Task needs revision'],
+      ['test', 'Test notification'],
+    ]
+    for (const [index, [kind, title]] of expected.entries()) {
+      const push = requests.find((request) => request.url === `${endpoint}-${index}`)
+      assert.ok(push, `provider request for device ${index}`)
+      const decrypted = await decryptPush(push.body, keys)
+      assert.equal(decrypted.kind, kind)
+      assert.equal(decrypted.title, title)
+      assert.ok(!JSON.stringify(decrypted).includes('Private'))
+    }
     requests.length = 0
     providerStatus = 302
     const redirected = await dispatch('/send')

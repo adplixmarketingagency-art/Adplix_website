@@ -1,5 +1,28 @@
 # Employee Portal — Delivery and Setup
 
+## Admin recipients, account recovery and specific workflow alerts
+
+**Notes & broadcasts** now lists active Admins and Employees with role labels. Select names to target them; no selection sends to all active team roles (including the sending Admin). Recipients get their own unread inbox record and optional device alert, while Admin management access to published notes remains unchanged. Disabled accounts are excluded from new deliveries.
+
+**Team** includes **Reset password** for other Admins and Employees, including disabled accounts, and a confirmed **Reactivate** action for disabled Admin/Employee rows. Reset creates a replacement temporary password using the existing secure password service, forces rotation at next sign-in, revokes sessions and removes device subscriptions. Reset does not reactivate an account; Reactivate does not reset a password. Reactivation preserves account identity, role, tasks and saved history and cannot resurrect old sessions. Completed intervening disabled dates stay exempt from missing daily-update debt. The final active Admin remains protected from deactivation; your own Admin row links to **Change password**, which requires the current password.
+
+Device notifications and Inbox labels identify the event:
+
+| Event | Recipient | Notification wording |
+| --- | --- | --- |
+| Note / announcement | Selected active Admins/Employees | Note / Broadcast |
+| Task assigned | Assigned Employee or Admin | New task assigned |
+| Task completed | Other active Admin reviewers | Task completed |
+| Task approved / returned for revision | Assignee | Your task approved / Task needs revision |
+| Task deadline changed | Assignee | Task deadline changed |
+| Leave / permission requested | Active Admins | New leave request / New permission request |
+| Leave approved / rejected | Requesting Employee | Your leave request approved / Your leave request rejected |
+| Permission approved / rejected | Requesting Employee | Your permission request approved / Your permission request rejected |
+
+Only fixed type-specific copy is displayed on the lock screen; private message content, absence reasons and review notes remain inside the authorized portal. Multiple devices, existing permission requirements, unread counts, safe diagnostics and Cloudflare-compatible manual redirects are preserved. The new service worker activates promptly on update; reload the portal once to load the controls and check for that worker update. No secrets/billing changes, database reset or SQL migration are required. Reset/reactivated users must enable notifications again after signing in because their old subscriptions are revoked deliberately.
+
+Verification: `npm run quality` passed lint, formatting, **163 tests**, marketing browser checks and portal browser checks. Local D1 browser coverage includes an Admin receiving a targeted note/broadcast, role-labelled recipients, Admin reset session invalidation, disabled Admin/Employee reset without activation, confirmed reactivation and required password rotation, and live leave/permission request/decision labels. Backend tests cover active-role routing, self/wrong-role denial, final-Admin safety, stale-session/push removal and historical inactive periods. Workerd tests independently decrypt all whitelisted device types and mixed-recipient envelopes; service-worker tests verify exact titles, private-copy exclusion, fallback behavior and activation. `npm run deploy:preview` and `git diff --check` passed. These checks use synthetic data/intercepted providers, not real production account resets or physical-device delivery.
+
 ## Cross-device push failure: Cloudflare fetch compatibility
 
 The reported test failure on iPhone, Android and desktop was reproduced locally in Cloudflare workerd, not inferred from device settings. Payload preparation, signing and encryption succeeded, but the actual sender failed before contacting its provider: `TypeError: Invalid redirect value, must be one of "follow" or "manual"`. Cloudflare does not implement `redirect:'error'`; the previous Node fetch mocks accepted that option and therefore missed the deployment-runtime failure.

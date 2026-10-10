@@ -154,6 +154,13 @@ export function dailyUpdateStatus(employeeId, updates = [], absences = [], now =
   // Creation/deactivation instants mark first/last business dates of employment.
   if (employee?.createdAt && day < dateStart(businessDate(employee.createdAt))) return result('exempt')
   if (employee?.deactivatedAt && day > dateStart(businessDate(employee.deactivatedAt))) return result('exempt')
+  if (
+    Array.isArray(employee?.inactivePeriods) &&
+    employee.inactivePeriods.some(
+      (period) => typeof period?.from === 'string' && today > period.from && (period.to == null || today < period.to),
+    )
+  )
+    return result('exempt')
   if (new Date(day + OFFSET).getUTCDay() === 0) return result('exempt')
   const own = absences.filter((a) => a.employeeId === employeeId)
   if (

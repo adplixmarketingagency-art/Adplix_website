@@ -329,6 +329,13 @@ try {
     await submit(form, 'Add employee')
     await saved(adminPage)
   }
+  const newAdmin = adminPage.locator('[data-form="admin"]')
+  await newAdmin.getByLabel('Name', { exact: true }).fill('Test Ops Admin')
+  await newAdmin.getByLabel('Employee ID', { exact: true }).fill('TEST-OPS-ADMIN')
+  await newAdmin.getByLabel('Email address').fill('ops@example.test')
+  await newAdmin.getByLabel('Temporary portal password').fill(syntheticPassword)
+  await submit(newAdmin, 'Add admin')
+  await expect(adminPage.locator('#feedback')).toContainText('Admin account created.')
   await navigate(adminPage, 'Clients')
   const client = adminPage.locator('[data-form="client"]')
   await client.getByLabel('Client name').fill('Test Client')
@@ -365,6 +372,10 @@ try {
   await expect(editorProgress(adminPage).locator('.assignment-slot.task-type-canva-poster.pending')).toHaveCount(1)
   await navigate(adminPage, 'Notes & broadcasts')
   const note = adminPage.locator('[data-form="note"]')
+  await expect(note.getByLabel('Test Ops Admin', { exact: true })).toBeVisible()
+  await expect(note.getByLabel('Test Ops Admin', { exact: true }).locator('..')).toContainText('Admin')
+  await expect(note.getByLabel('Test Editor', { exact: true }).locator('..')).toContainText('Employee')
+  await expect(note).toContainText('Leave everyone unselected to send to all active Admins and Employees')
   await note.getByLabel('Note', { exact: true }).fill('Review the brand brief. <img src=x onerror=alert(1)>')
   await note.getByLabel('Test Editor', { exact: true }).check()
   await submit(note, 'Publish note')
@@ -372,11 +383,30 @@ try {
   await expect(adminPage.locator('section.panel').filter({ hasText: 'Published notes' })).toContainText(
     'From Test Admin · Admin',
   )
+  const adminOnlyNote = adminPage.locator('[data-form="note"]')
+  await adminOnlyNote.getByLabel('Note', { exact: true }).fill('A private note for the other Admin')
+  await adminOnlyNote.getByLabel('Test Ops Admin', { exact: true }).check()
+  const targetedNoteRequest = adminPage.waitForRequest(
+    (request) => request.url().endsWith('/api/portal/actions') && request.postDataJSON()?.type === 'note.create',
+  )
+  await submit(adminOnlyNote, 'Publish note')
+  const targetedPayload = (await targetedNoteRequest).postDataJSON()
+  assert.equal(targetedPayload.recipientIds.length, 1)
+  await saved(adminPage)
   const broadcast = adminPage.locator('[data-form="broadcast"]')
   await broadcast.getByLabel('Title', { exact: true }).fill('Production update')
   await broadcast.getByLabel('Message', { exact: true }).fill('Check your assignment before starting work.')
   await submit(broadcast, 'Send to inbox')
   await saved(adminPage)
+
+  const opsContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' })
+  const opsPage = await opsContext.newPage()
+  track(opsPage)
+  await login(opsPage, 'ops@example.test', true)
+  await navigate(opsPage, 'Inbox')
+  await expect(opsPage.locator('#inbox-items')).toContainText('A private note for the other Admin')
+  await expect(opsPage.locator('#inbox-items')).toContainText('Production update')
+  await expect(opsPage.locator('#inbox-items')).not.toContainText('Review the brand brief.')
 
   const employeeContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' })
   const employeePage = await employeeContext.newPage()
@@ -402,6 +432,9 @@ try {
     'From Test Admin · Admin',
   )
   await expect(inbox).not.toContainText('admin@example.test')
+  await expect(inbox).not.toContainText('A private note for the other Admin')
+  await expect(inbox.locator('.tag').filter({ hasText: 'Note' })).not.toHaveCount(0)
+  await expect(inbox.locator('.tag').filter({ hasText: 'Broadcast' })).not.toHaveCount(0)
   const existingItems = await inbox.locator('[data-notification-id]').count()
   await navigate(adminPage, 'Notes & broadcasts')
   const liveNote = adminPage.locator('[data-form="note"]')
@@ -602,6 +635,11 @@ try {
   await permission.getByLabel('Reason', { exact: true }).fill('Synthetic appointment')
   await submit(permission, 'Send permission request')
   await saved(employeePage)
+  await navigate(adminPage, 'Inbox')
+  await adminPage.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(adminPage.locator('#inbox-items .tag').filter({ hasText: /^New leave request$/ })).toHaveCount(1)
+  await expect(adminPage.locator('#inbox-items .tag').filter({ hasText: /^New permission request$/ })).toHaveCount(1)
+  await expect(adminPage.locator('#inbox-items')).toContainText('From Test Editor · Employee')
   await navigate(adminPage, 'Time off')
   await adminPage.getByRole('button', { name: 'Refresh', exact: true }).click()
   for (let i = 0; i < 2; i++) {
@@ -610,6 +648,13 @@ try {
     await saved(adminPage)
   }
   await navigate(employeePage, 'Inbox')
+  await employeePage.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(
+    employeePage.locator('#inbox-items .tag').filter({ hasText: /^Your leave request approved$/ }),
+  ).toHaveCount(1)
+  await expect(
+    employeePage.locator('#inbox-items .tag').filter({ hasText: /^Your permission request approved$/ }),
+  ).toHaveCount(1)
   await expect(employeePage.getByText('Production update', { exact: true })).toBeVisible()
   await expect(employeePage.locator('#push-status')).toContainText('not configured')
   await navigate(adminPage, 'Analytics')
@@ -739,7 +784,8 @@ try {
   const adminWorkbook = unzipSync(new Uint8Array(await readFile(resolve(folder, 'admin-report.xlsx'))))
   const adminSheet = strFromU8(adminWorkbook['xl/worksheets/sheet2.xml'])
   assert.match(adminSheet, /<c r="C2"[^>]*>.*?Admin<\/t>/)
-  assert.match(adminSheet, /<c r="F2"><v>[1-9]\d*<\/v><\/c>/)
+  assert.match(adminSheet, /<c r="E2"><v>[1-9]\d*<\/v><\/c>/)
+  assert.match(adminSheet, /<c r="F2"><v>\d+<\/v><\/c>/)
   await navigate(employeePage, 'Overview')
   await employeePage.getByRole('button', { name: 'Refresh', exact: true }).click()
   await employeePage.screenshot({ path: resolve(screenshots, 'employee-desktop.png'), fullPage: true })
@@ -760,6 +806,100 @@ try {
   await noOverflow(employeePage)
   await employeePage.setViewportSize({ width: 768, height: 1024 })
   await noOverflow(employeePage)
+  await employeePage.setViewportSize({ width: 1440, height: 1000 })
+  await navigate(employeePage, 'Time off')
+  const rejectedLeave = employeePage.locator('[data-form="absence-leave"]')
+  await rejectedLeave.getByLabel('First day').fill(tomorrow)
+  await rejectedLeave.getByLabel('Last day').fill(tomorrow)
+  await rejectedLeave.getByLabel('Reason', { exact: true }).fill('Synthetic rejected leave')
+  await submit(rejectedLeave, 'Send leave request')
+  await saved(employeePage)
+  const rejectedPermission = employeePage.locator('[data-form="absence-permission"]')
+  await rejectedPermission.getByLabel('Date', { exact: true }).fill(businessDate())
+  await rejectedPermission.getByLabel('From', { exact: true }).fill('13:30')
+  await rejectedPermission.getByLabel('To', { exact: true }).fill('14:00')
+  await rejectedPermission.getByLabel('Reason', { exact: true }).fill('Synthetic rejected permission')
+  await submit(rejectedPermission, 'Send permission request')
+  await saved(employeePage)
+  await navigate(adminPage, 'Time off')
+  await adminPage.getByRole('button', { name: 'Refresh', exact: true }).click()
+  for (const reason of ['Synthetic rejected leave', 'Synthetic rejected permission']) {
+    await adminPage.locator('.list-item').filter({ hasText: reason }).getByRole('button', { name: 'Reject' }).click()
+    await submit(adminPage.locator('[data-form="absence-decision"]'), 'Confirm decision')
+    await saved(adminPage)
+  }
+  await navigate(employeePage, 'Inbox')
+  await employeePage.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(
+    employeePage.locator('#inbox-items .tag').filter({ hasText: /^Your leave request rejected$/ }),
+  ).toHaveCount(1)
+  await expect(
+    employeePage.locator('#inbox-items .tag').filter({ hasText: /^Your permission request rejected$/ }),
+  ).toHaveCount(1)
+  await navigate(adminPage, 'Team')
+  const adminAccounts = adminPage
+    .locator('section.panel')
+    .filter({ has: adminPage.getByRole('heading', { name: 'Admin accounts', exact: true }) })
+  const selfAdmin = adminAccounts.locator('.list-item').filter({ hasText: 'admin@example.test' })
+  await expect(selfAdmin.getByRole('button', { name: 'Reset password' })).toHaveCount(0)
+  await expect(selfAdmin.getByRole('link', { name: 'Change password' })).toHaveAttribute('href', '#profile')
+  const opsRow = () => adminAccounts.locator('.list-item').filter({ hasText: 'ops@example.test' })
+  await opsRow().getByRole('button', { name: 'Reset password' }).click()
+  const adminReset = adminPage.locator('[data-form="reset"]')
+  await expect(adminPage.getByRole('dialog')).toContainText('does not activate an inactive account')
+  await adminReset.getByLabel('Replacement temporary password').fill(syntheticPassword)
+  const adminResetRequest = adminPage.waitForRequest(
+    (request) =>
+      request.url().endsWith('/api/portal/actions') && request.postDataJSON()?.type === 'admin.resetPassword',
+  )
+  await submit(adminReset, 'Reset password')
+  assert.equal((await adminResetRequest).postDataJSON().password, syntheticPassword)
+  await saved(adminPage)
+  assert.equal(
+    (await opsPage.request.get(base + '/api/portal/session')).status(),
+    401,
+    'Admin reset invalidates the existing session',
+  )
+  await opsRow().getByRole('button', { name: 'Deactivate' }).click()
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'Confirm' }).click()
+  await expect(adminPage.locator('#feedback')).toContainText('Admin account deactivated.')
+  await expect(opsRow()).toContainText('Inactive')
+  await opsRow().getByRole('button', { name: 'Reset password' }).click()
+  await adminPage.locator('[data-form="reset"]').getByLabel('Replacement temporary password').fill(syntheticPassword)
+  await submit(adminPage.locator('[data-form="reset"]'), 'Reset password')
+  await saved(adminPage)
+  await expect(opsRow()).toContainText('Inactive')
+  await opsRow().getByRole('button', { name: 'Reactivate' }).click()
+  await expect(adminPage.getByRole('dialog')).toContainText('Restore Test Ops Admin’s Admin access?')
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'Confirm' }).click()
+  await expect(adminPage.locator('#feedback')).toContainText('Admin reactivated.')
+  await expect(opsRow()).toContainText('Active')
+  const opsRestored = await browser.newContext()
+  await login(await opsRestored.newPage(), 'ops@example.test', true)
+  await opsRestored.close()
+  const employeeAccounts = adminPage
+    .locator('section.panel')
+    .filter({ has: adminPage.getByRole('heading', { name: 'Employees', exact: true }) })
+  const designerRow = () => employeeAccounts.locator('.list-item').filter({ hasText: 'designer@example.test' })
+  await designerRow().getByRole('button', { name: 'Deactivate' }).click()
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'Confirm' }).click()
+  await expect(adminPage.locator('#feedback')).toContainText('Employee deactivated.')
+  await designerRow().getByRole('button', { name: 'Reset password' }).click()
+  await adminPage.locator('[data-form="reset"]').getByLabel('Replacement temporary password').fill(syntheticPassword)
+  const employeeResetRequest = adminPage.waitForRequest(
+    (request) =>
+      request.url().endsWith('/api/portal/actions') && request.postDataJSON()?.type === 'employee.resetPassword',
+  )
+  await submit(adminPage.locator('[data-form="reset"]'), 'Reset password')
+  await employeeResetRequest
+  await saved(adminPage)
+  await expect(designerRow()).toContainText('Inactive')
+  await designerRow().getByRole('button', { name: 'Reactivate' }).click()
+  await expect(adminPage.getByRole('dialog')).toContainText('Restore Test Designer’s Employee access?')
+  await adminPage.getByRole('dialog').getByRole('button', { name: 'Confirm' }).click()
+  await expect(adminPage.locator('#feedback')).toContainText('Employee reactivated.')
+  await expect(designerRow()).toContainText('Active')
+  await opsContext.close()
   assert.deepEqual(errors, [], 'No uncaught JS or CSP errors')
   const sw = await fetch(base + '/portal/sw.js')
   assert.equal(sw.status, 200)

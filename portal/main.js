@@ -111,6 +111,27 @@ const duration = (value) =>
 const serviceTypeLabel = (value) =>
   ({ videos: 'Videos', posters: 'Posters', both: 'Videos + posters', video: 'Videos', poster: 'Posters' })[value] ||
   'Videos + posters'
+const NOTIFICATION_TYPE_LABELS = Object.freeze({
+  note: 'Note',
+  broadcast: 'Broadcast',
+  'task-assigned': 'New task assigned',
+  'task-updated': 'Task updated',
+  'absence-updated': 'Time-off request updated',
+  'leave-requested': 'New leave request',
+  'permission-requested': 'New permission request',
+  'leave-approved': 'Your leave request approved',
+  'leave-rejected': 'Your leave request rejected',
+  'permission-approved': 'Your permission request approved',
+  'permission-rejected': 'Your permission request rejected',
+  'task-completed': 'Task completed',
+  'task-approved': 'Your task approved',
+  'task-revision': 'Task needs revision',
+  'task-deadline': 'Task deadline changed',
+  workspace: 'Workspace',
+  test: 'Test notification',
+})
+const notificationType = (item) =>
+  Object.hasOwn(NOTIFICATION_TYPE_LABELS, item.kind) ? NOTIFICATION_TYPE_LABELS[item.kind] : ''
 let fieldSequence = 0
 const field = (title, control) => {
   const id = `portal-field-${++fieldSequence}`
@@ -346,7 +367,12 @@ function renderInboxPopup() {
   const items = state.notificationPopup
   if (!items?.length || !state.user || !document.querySelector('.layout')) return
   const newest = items.at(-1)
-  const title = items.length > 1 ? `${items.length} new inbox messages` : newest.title
+  const title =
+    items.length > 1
+      ? `${items.length} new inbox messages`
+      : !['note', 'broadcast'].includes(newest.kind) && notificationType(newest)
+        ? notificationType(newest)
+        : newest.title
   root.insertAdjacentHTML(
     'beforeend',
     `<aside id="inbox-popup" class="inbox-popup" aria-label="New inbox message"><div role="status" aria-live="polite" aria-atomic="true"><strong>${esc(title)}</strong><p>${esc(items.length > 1 ? 'New notes or notifications are waiting in your inbox.' : senderIdentity(newest.sender) || 'New workspace notification')}</p></div><div class="actions">${btn('Open inbox', 'inbox-open', '', 'small primary')}${btn('Dismiss', 'inbox-dismiss', '', 'small')}</div></aside>`,
@@ -515,7 +541,8 @@ function syncPushUI() {
   if (controls) controls.innerHTML = pushControls()
 }
 function notificationItem(n) {
-  return `<div class="list-item ${n.readAt ? '' : 'unread'}" data-notification-id="${esc(n.id)}" data-read-at="${esc(n.readAt || '')}"><div class="split"><strong>${esc(n.title)}</strong><small>${fmtDateTime(n.createdAt)}</small></div>${senderIdentity(n.sender) ? `<small class="sender-identity">${senderIdentity(n.sender)}</small>` : ''}<p>${esc(n.text)}</p>${!n.readAt ? btn('Mark as read', 'notification-read', n.id, 'small') : ''}</div>`
+  const type = notificationType(n)
+  return `<div class="list-item ${n.readAt ? '' : 'unread'}" data-notification-id="${esc(n.id)}" data-read-at="${esc(n.readAt || '')}"><div class="split"><strong>${esc(n.title)}</strong><small>${fmtDateTime(n.createdAt)}</small></div>${type ? `<small class="tag">${type}</small>` : ''}${senderIdentity(n.sender) ? `<small class="sender-identity">${senderIdentity(n.sender)}</small>` : ''}<p>${esc(n.text)}</p>${!n.readAt ? btn('Mark as read', 'notification-read', n.id, 'small') : ''}</div>`
 }
 function syncInbox(notifications) {
   syncInboxCount(notifications)
@@ -691,7 +718,7 @@ function adminAccounts() {
   const accounts = arr(state.snapshot.employees).filter((e) => e.role === 'Admin')
   return section(
     'Admin accounts',
-    `<p class="muted admin-account-note">Manage administrator access separately from employee job functions. The server prevents deactivating the final active Admin.</p>${adminForm()}<div class="admin-account-list">${accounts.map((account) => `<div class="list-item"><div class="split"><div><strong>${personName(account, account.name)}</strong><p>${esc(account.designation || 'Admin')} · ${esc(account.employeeId)} · ${esc(account.email || 'Email private')}</p></div>${statusTag(account.active ? 'Active' : 'Inactive')}</div>${account.active ? `<div class="actions">${btn('Edit designation', 'designation-edit', account.id, 'small')}${btn('Deactivate', 'admin-deactivate', account.id, 'small danger')}</div>` : ''}</div>`).join('') || empty('No admin accounts yet.')}</div>`,
+    `<p class="muted admin-account-note">Manage administrator access separately from employee job functions. The server prevents deactivating the final active Admin.</p>${adminForm()}<div class="admin-account-list">${accounts.map((account) => `<div class="list-item"><div class="split"><div><strong>${personName(account, account.name)}</strong><p>${esc(account.designation || 'Admin')} · ${esc(account.employeeId)} · ${esc(account.email || 'Email private')}</p></div>${statusTag(account.active ? 'Active' : 'Inactive')}</div><div class="actions">${account.id === state.user.id ? '<a href="#profile">Change password</a>' : btn('Reset password', 'admin-reset', account.id, 'small')}${account.active ? `${btn('Edit designation', 'designation-edit', account.id, 'small')}${btn('Deactivate', 'admin-deactivate', account.id, 'small danger')}` : btn('Reactivate', 'admin-reactivate', account.id, 'small')}</div></div>`).join('') || empty('No admin accounts yet.')}</div>`,
   )
 }
 function team() {
@@ -703,7 +730,7 @@ function team() {
       .filter((e) => e.role !== 'Admin')
       .map(
         (e) =>
-          `<div class="list-item"><div class="split"><div><strong>${personName(e, e.name)}</strong><p>${esc(e.designation || 'Employee')} · ${esc(e.employeeId)} · ${esc(e.email || 'Email private')}</p><small>${esc(arr(e.jobFunctions).join(' · ') || 'No job functions')}</small></div>${statusTag(e.active ? 'Active' : 'Inactive')}</div>${e.active ? `<div class="actions">${btn('Edit', 'employee-edit', e.id, 'small')}${btn('Reset password', 'employee-reset', e.id, 'small')}${btn('Deactivate', 'employee-deactivate', e.id, 'small danger')}</div>` : ''}</div>`,
+          `<div class="list-item"><div class="split"><div><strong>${personName(e, e.name)}</strong><p>${esc(e.designation || 'Employee')} · ${esc(e.employeeId)} · ${esc(e.email || 'Email private')}</p><small>${esc(arr(e.jobFunctions).join(' · ') || 'No job functions')}</small></div>${statusTag(e.active ? 'Active' : 'Inactive')}</div><div class="actions">${e.active ? `${btn('Edit', 'employee-edit', e.id, 'small')}${btn('Reset password', 'employee-reset', e.id, 'small')}${btn('Deactivate', 'employee-deactivate', e.id, 'small danger')}` : `${btn('Reset password', 'employee-reset', e.id, 'small')}${btn('Reactivate', 'employee-reactivate', e.id, 'small')}`}</div></div>`,
       )
       .join('') || empty('No employees yet.'),
   )}${adminAccounts()}`
@@ -754,8 +781,10 @@ function reviews() {
   )}`
 }
 function notes() {
-  const recipients = arr(state.snapshot.employees).filter((e) => e.active && e.role === 'Employee')
-  const recipientFields = `<fieldset><legend>Recipients</legend><p class="muted">Leave unselected to send to everyone.</p><div class="check-grid">${recipients.map((e) => `<label class="check"><input type="checkbox" name="recipientIds" value="${esc(e.id)}"><span>${esc(e.name)}</span></label>`).join('')}</div></fieldset>`
+  const recipients = arr(state.snapshot.employees).filter(
+    (e) => e.active && (e.role === 'Employee' || e.role === 'Admin'),
+  )
+  const recipientFields = `<fieldset><legend>Recipients</legend><p class="muted">Leave everyone unselected to send to all active Admins and Employees; select names to target only those people.</p><div class="check-grid">${recipients.map((e) => `<label class="check"><input type="checkbox" name="recipientIds" value="${esc(e.id)}" aria-label="${esc(e.name)}"><span>${esc(e.name)} <small class="tag" aria-hidden="true">${esc(e.role)}</small></span></label>`).join('')}</div></fieldset>`
   return `<div class="page-heading"><div><p class="eyebrow">Communication</p><h1>Notes & broadcasts</h1></div></div><div class="grid"><div>${section('Post a note', `<form data-form="note">${area('text', 'Note', '', 'required rows="4"')}${recipientFields}<button class="primary" type="submit">Publish note</button></form>`)}</div><div>${section('Send announcement', `<form data-form="broadcast">${input('title', 'Title', 'text', '', 'required')}${area('text', 'Message', '', 'required rows="4"')}${recipientFields}<button class="primary" type="submit">Send to inbox</button></form><p class="fine">Browser push is optional; every announcement stays in the inbox.</p>`)}</div></div>${section(
     'Published notes',
     `<div id="notes-items">${noteItems(state.snapshot.notes, true)}</div>`,
@@ -1415,10 +1444,37 @@ async function handleAction(button) {
     return
   }
   if (action === 'employee-reset') {
+    if (!admin() || !arr(state.snapshot.employees).some((e) => String(e.id) === id && e.role === 'Employee')) return
     modal(
       'Reset portal password',
-      `<p class="muted">This revokes existing sessions and requires a password change on next sign-in.</p><form data-form="reset" data-id="${esc(id)}">${input('password', 'Replacement temporary password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button class="primary" type="submit">Reset password</button></form>`,
+      `<p class="muted">Confirm resetting this employee’s password. This revokes existing sessions and device alerts, requires a password change on next sign-in, and does not activate an inactive account.</p><form data-form="reset" data-role="Employee" data-id="${esc(id)}">${input('password', 'Replacement temporary password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button class="primary" type="submit">Reset password</button></form>`,
     )
+    return
+  }
+  if (action === 'admin-reset') {
+    if (
+      !admin() ||
+      id === String(state.user.id) ||
+      !arr(state.snapshot.employees).some((e) => String(e.id) === id && e.role === 'Admin')
+    )
+      return
+    modal(
+      'Reset admin password',
+      `<p class="muted">Confirm resetting this Admin’s password. This revokes existing sessions and device alerts, requires a password change on next sign-in, and does not activate an inactive account.</p><form data-form="reset" data-role="Admin" data-id="${esc(id)}">${input('password', 'Replacement temporary password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button class="primary" type="submit">Reset password</button></form>`,
+    )
+    return
+  }
+  if (action === 'employee-reactivate' || action === 'admin-reactivate') {
+    if (!admin()) return
+    const role = action === 'admin-reactivate' ? 'Admin' : 'Employee'
+    const person = arr(state.snapshot.employees).find((e) => String(e.id) === id && e.role === role && !e.active)
+    if (person)
+      confirmModal(
+        `Reactivate ${role.toLowerCase()}`,
+        `Restore ${person.name}’s ${role} access? Their current password requirements still apply.`,
+        action,
+        id,
+      )
     return
   }
   if (action === 'employee-deactivate') {
@@ -1451,6 +1507,13 @@ async function handleAction(button) {
   }
   if (action === 'confirm-admin-deactivate') {
     await runWrite({ type: 'employee.deactivate', id }, button, 'Admin account deactivated.', true)
+    return
+  }
+  if (action === 'confirm-employee-reactivate' || action === 'confirm-admin-reactivate') {
+    if (!admin()) return
+    const role = action === 'confirm-admin-reactivate' ? 'Admin' : 'Employee'
+    if (arr(state.snapshot.employees).some((e) => String(e.id) === id && e.role === role && !e.active))
+      await runWrite({ type: `${role.toLowerCase()}.reactivate`, id }, button, `${role} reactivated.`, true)
     return
   }
   if (action === 'confirm-archive') {
@@ -1616,6 +1679,7 @@ async function checkPush() {
     push = state.push
     if (config.publicKey) {
       const reg = await navigator.serviceWorker.getRegistration('/portal/')
+      if (reg) await reg.update().catch(() => {})
       const existing = await reg?.pushManager.getSubscription()
       if (state.user?.id !== user || state.csrf !== csrf || state.push !== push) return
       // A browser subscription alone cannot prove the server still has it persisted.
@@ -1815,7 +1879,17 @@ async function handleForm(form, button) {
   if (kind === 'update') payload = { type: 'update.submit', text: v.text }
   if (kind === 'profile')
     payload = { type: 'profile.update', designation: v.designation, profile: { phone: v.phone, bio: v.bio } }
-  if (kind === 'reset') payload = { type: 'employee.resetPassword', id: form.dataset.id, password: v.password }
+  if (kind === 'reset') {
+    const role = form.dataset.role
+    if (
+      !admin() ||
+      !['Admin', 'Employee'].includes(role) ||
+      (role === 'Admin' && String(state.user.id) === form.dataset.id) ||
+      !arr(state.snapshot.employees).some((e) => String(e.id) === form.dataset.id && e.role === role)
+    )
+      return
+    payload = { type: `${role.toLowerCase()}.resetPassword`, id: form.dataset.id, password: v.password }
+  }
   if (kind === 'deadline') {
     const task = arr(state.snapshot.tasks).find((t) => t.id === form.dataset.id)
     payload = { type: 'task.deadline', id: form.dataset.id, deadline: kolkataISO(v.deadline), version: task.version }

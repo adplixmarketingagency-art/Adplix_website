@@ -25,6 +25,8 @@ const admin = (user) => {
   if (user.role !== 'Admin') fail('Not permitted.', 403)
 }
 const active = (state, value, field = 'id') => state.users.find((u) => u[field] === value && u.active)
+const disabled = (state, value, role) => state.users.find((u) => u.id === value && !u.active && u.role === role)
+const team = (user) => user.active && (user.role === 'Admin' || user.role === 'Employee')
 const currentActor = (state, userId, credentialVersion) => {
   const actor = active(state, userId)
   if (!actor || (actor.credentialVersion || 0) !== credentialVersion) fail('Session expired.', 401)
@@ -69,13 +71,57 @@ const timestamp = (value) => {
   return new Date(value).toISOString()
 }
 const recipients = (state, values) => {
-  if (!Array.isArray(values) || values.length > 100 || values.some((v) => typeof v !== 'string' || !active(state, v)))
+  if (
+    !Array.isArray(values) ||
+    values.length > 100 ||
+    values.some((v) => typeof v !== 'string' || !team(active(state, v) || {}))
+  )
     fail('Invalid recipients.')
   return [...new Set(values)]
 }
 const notify = (state, employeeId, title, text, metadata = {}) => {
   state.notifications ||= []
   state.notifications.push({ id: id(), employeeId, title, text, ...metadata, createdAt: iso(), readAt: null })
+}
+const KIND_FOR_ACTION = Object.freeze({
+  'note.create': 'note',
+  'broadcast.create': 'broadcast',
+  'task.create': 'task-assigned',
+  'task.transition': 'task-updated',
+  'task.deadline': 'task-updated',
+  'absence.request': 'workspace',
+  'absence.decide': 'absence-updated',
+})
+const NOTIFICATION_KINDS = new Set([
+  'note',
+  'broadcast',
+  'task-assigned',
+  'task-updated',
+  'absence-updated',
+  'leave-requested',
+  'permission-requested',
+  'leave-approved',
+  'leave-rejected',
+  'permission-approved',
+  'permission-rejected',
+  'task-completed',
+  'task-approved',
+  'task-revision',
+  'task-deadline',
+  'workspace',
+  'test',
+])
+const kindForAction = (type) => (Object.hasOwn(KIND_FOR_ACTION, type) ? KIND_FOR_ACTION[type] : 'workspace')
+const notificationKind = (row) => {
+  if (NOTIFICATION_KINDS.has(row.kind)) return row.kind
+  if (row.title === 'New note') return 'note'
+  if (row.title === 'New assignment') return 'task-assigned'
+  if (row.title === 'Task approved') return 'task-approved'
+  if (row.title === 'Task needs revision') return 'task-revision'
+  if (row.title === 'Task deadline changed') return 'task-deadline'
+  if (/^Task completed: /.test(row.title)) return 'task-completed'
+  if (row.title === 'Absence request approved' || row.title === 'Absence request rejected') return 'absence-updated'
+  return 'workspace'
 }
 const jobFunctions = (v) => {
   if (!Array.isArray(v) || v.length > 16 || v.some((x) => typeof x !== 'string' || !x.trim() || x.length > 80))
@@ -104,7 +150,7 @@ const pushDeviceCookie = (request) =>
   /(?:^|;\s*)portal_push_device=([a-f0-9]{32})(?:;|$)/.exec(request.headers.get('Cookie') || '')?.[1]
 const deviceCookieHeader = (token, request) =>
   `portal_push_device=${token}; HttpOnly; SameSite=Strict; Path=/api/portal; Max-Age=31536000${new URL(request.url).protocol === 'https:' ? '; Secure' : ''}`
-const subscriptionsFor = (state, ids, limit = MAX_ACTION_PUSHES) => {
+const ownedSubscriptionsFor = (state, ids, limit) => {
   const eligible = new Set(state.users.filter((u) => u.active && ids.has(u.id)).map((u) => u.id))
   const owners = new Map()
   for (const item of state.subscriptions || []) {
@@ -121,10 +167,22 @@ const subscriptionsFor = (state, ids, limit = MAX_ACTION_PUSHES) => {
     const endpoint = item.subscription?.endpoint
     if (!eligible.has(item.employeeId) || owners.get(endpoint)?.size !== 1 || seen.has(endpoint)) continue
     seen.add(endpoint)
-    result.push(item.subscription)
+    result.push({ subscription: item.subscription, employeeId: item.employeeId })
     if (result.length === limit) break
   }
   return result
+}
+const subscriptionsFor = (state, ids, limit = MAX_ACTION_PUSHES) =>
+  ownedSubscriptionsFor(state, ids, limit).map((item) => item.subscription)
+const pushEntriesFor = (state, rows) => {
+  // The last committed inbox row for each recipient determines their device alert.
+  const latest = new Map(rows.map((row) => [row.employeeId, row.kind]))
+  return ownedSubscriptionsFor(state, new Set(latest.keys()), MAX_ACTION_PUSHES).map(
+    ({ employeeId, subscription }) => ({
+      subscription,
+      kind: latest.get(employeeId),
+    }),
+  )
 }
 const cleanExpiredPush = async (db, result) => {
   if (!result.expiredEndpoints?.length) return
@@ -210,7 +268,11 @@ const snapshot = (state, user, now = new Date()) => {
     profileGlimpses: visibleEmployees.map(profileGlimpse),
     employees: visibleEmployees.map((u) =>
       isAdmin
-        ? { ...publicUser(u), updateStatus: dailyUpdateStatus(u.id, state.updates, state.absences, now, u) }
+        ? {
+            ...publicUser(u),
+            inactivePeriods: u.inactivePeriods || [],
+            updateStatus: dailyUpdateStatus(u.id, state.updates, state.absences, now, u),
+          }
         : {
             id: u.id,
             name: u.name,
@@ -295,12 +357,13 @@ const snapshot = (state, user, now = new Date()) => {
       }),
     notifications: (state.notifications || [])
       .filter((x) => x.employeeId === user.id)
-      .map(({ id, title, text, createdAt, readAt, senderId, taskId, transitionVersion }) => {
+      .map(({ id, title, text, createdAt, readAt, senderId, taskId, transitionVersion, kind }) => {
         const sender = senderId && state.users.find((u) => u.id === senderId)
         return {
           id,
           title,
           text,
+          kind: notificationKind({ title, kind }),
           createdAt,
           readAt,
           ...(taskId ? { taskId, transitionVersion } : {}),
@@ -467,8 +530,11 @@ async function action(db, actorId, credentialVersion, a, env) {
         if (!u) fail('Employee unavailable.', 404)
         if (u.role === 'Admin' && s.users.filter((x) => x.active && x.role === 'Admin').length <= 1)
           fail('Cannot deactivate final Admin.', 409)
+        if ((u.inactivePeriods || []).length >= 512) fail('Account lifecycle limit reached.', 409)
         u.active = false
         u.deactivatedAt = iso()
+        u.inactivePeriods ||= []
+        u.inactivePeriods.push({ from: businessDate(u.deactivatedAt), to: null })
         u.credentialVersion = (u.credentialVersion || 0) + 1
         revoke = u.id
         subjectId = u.id
@@ -476,14 +542,49 @@ async function action(db, actorId, credentialVersion, a, env) {
         break
       case 'employee.resetPassword':
         admin(actor)
-        u = active(s, a.id)
+        u = s.users.find((x) => x.id === a.id)
         if (!u || u.role !== 'Employee') fail('Employee unavailable.', 404)
         u.passwordHash = await hashPortalPassword(a.password, env)
         u.mustChangePassword = true
         u.credentialVersion = (u.credentialVersion || 0) + 1
         revoke = u.id
         subjectId = u.id
+        s.subscriptions = (s.subscriptions || []).filter((x) => x.employeeId !== u.id)
         break
+      case 'admin.resetPassword':
+        admin(actor)
+        u = s.users.find((x) => x.id === a.id && x.role === 'Admin')
+        if (!u) fail('Admin unavailable.', 404)
+        if (u.id === actor.id) fail('Use your own change-password flow.', 403)
+        u.passwordHash = await hashPortalPassword(a.password, env)
+        u.mustChangePassword = true
+        u.credentialVersion = (u.credentialVersion || 0) + 1
+        revoke = u.id
+        subjectId = u.id
+        s.subscriptions = (s.subscriptions || []).filter((x) => x.employeeId !== u.id)
+        break
+      case 'employee.reactivate':
+      case 'admin.reactivate': {
+        admin(actor)
+        const role = a.type === 'admin.reactivate' ? 'Admin' : 'Employee'
+        u = disabled(s, a.id, role)
+        if (!u) fail(`${role} unavailable.`, 404)
+        const today = businessDate()
+        u.inactivePeriods ||= []
+        const open = u.inactivePeriods.findLast((period) => period.to === null)
+        if (open) open.to = today
+        else if (u.deactivatedAt) {
+          if (u.inactivePeriods.length >= 512) fail('Account lifecycle limit reached.', 409)
+          u.inactivePeriods.push({ from: businessDate(u.deactivatedAt), to: today })
+        }
+        u.active = true
+        u.deactivatedAt = null
+        u.credentialVersion = (u.credentialVersion || 0) + 1
+        revoke = u.id
+        subjectId = u.id
+        s.subscriptions = (s.subscriptions || []).filter((x) => x.employeeId !== u.id)
+        break
+      }
       case 'designation.update':
         if (actor.role === 'Employee') {
           if (a.id && a.id !== actor.id) fail('Not permitted.', 403)
@@ -653,7 +754,7 @@ async function action(db, actorId, credentialVersion, a, env) {
         }
         s.tasks ||= []
         s.tasks.push(task)
-        if (u.role === 'Employee') notify(s, u.id, 'New assignment', task.title)
+        notify(s, u.id, 'New assignment', task.title, { kind: 'task-assigned', senderId: actor.id })
         subjectId = task.id
         break
       }
@@ -674,17 +775,22 @@ async function action(db, actorId, credentialVersion, a, env) {
           a.rating,
           a.ratingNote === undefined ? '' : a.ratingNote,
         )
-        if (actor.role === 'Employee' && previousState !== 'Completed' && a.state === 'Completed') {
+        if (previousState !== 'Completed' && a.state === 'Completed') {
           s.notifications ||= []
           const title = `Task completed: ${t.title}`
           const text = 'This task is completed and waiting for approval.'
-          for (const recipient of s.users.filter((x) => x.active && x.role === 'Admin')) {
+          for (const recipient of s.users.filter((x) => x.active && x.role === 'Admin' && x.id !== actor.id)) {
             if (
               !s.notifications.some(
                 (n) => n.employeeId === recipient.id && n.taskId === t.id && n.transitionVersion === previousVersion,
               )
             ) {
-              notify(s, recipient.id, title, text, { taskId: t.id, transitionVersion: previousVersion })
+              notify(s, recipient.id, title, text, {
+                kind: 'task-completed',
+                senderId: actor.id,
+                taskId: t.id,
+                transitionVersion: previousVersion,
+              })
             }
           }
         }
@@ -694,6 +800,7 @@ async function action(db, actorId, credentialVersion, a, env) {
             t.assigneeId,
             a.state === 'Approved' ? 'Task approved' : 'Task needs revision',
             a.state === 'Approved' ? t.title : required(a.reason, 1000),
+            { kind: a.state === 'Approved' ? 'task-approved' : 'task-revision', senderId: actor.id },
           )
         subjectId = t.id
         break
@@ -714,6 +821,10 @@ async function action(db, actorId, credentialVersion, a, env) {
         t.deadline = timestamp(a.deadline)
         t.updatedAt = iso()
         t.version++
+        notify(s, t.assigneeId, 'Task deadline changed', 'Review your task timeline.', {
+          kind: 'task-deadline',
+          senderId: actor.id,
+        })
         subjectId = t.id
         break
       case 'update.submit': {
@@ -755,6 +866,14 @@ async function action(db, actorId, credentialVersion, a, env) {
           decidedAt: null,
           decisionNote: '',
         })
+        for (const recipient of s.users.filter((x) => x.active && x.role === 'Admin'))
+          notify(
+            s,
+            recipient.id,
+            kind === 'leave' ? 'New leave request' : 'New permission request',
+            `A team member submitted a ${kind} request for review.`,
+            { kind: `${kind}-requested`, senderId: actor.id },
+          )
         break
       }
       case 'absence.decide':
@@ -773,8 +892,9 @@ async function action(db, actorId, credentialVersion, a, env) {
         notify(
           s,
           item.employeeId,
-          'Absence request ' + a.status.toLowerCase(),
+          `Your ${item.kind} request ${a.status.toLowerCase()}`,
           item.decisionNote || 'Your request has been reviewed.',
+          { kind: `${item.kind}-${a.status.toLowerCase()}`, senderId: actor.id },
         )
         subjectId = item.id
         break
@@ -784,10 +904,8 @@ async function action(db, actorId, credentialVersion, a, env) {
           text = required(a.text, 3000)
         subjectId = id()
         s.notes.push({ id: subjectId, text, recipientIds: rids, authorId: actor.id, createdAt: iso() })
-        for (const e of s.users.filter(
-          (x) => x.active && x.role === 'Employee' && (!rids.length || rids.includes(x.id)),
-        ))
-          notify(s, e.id, 'New note', text, { senderId: actor.id })
+        for (const e of s.users.filter((x) => team(x) && (!rids.length || rids.includes(x.id))))
+          notify(s, e.id, 'New note', text, { kind: 'note', senderId: actor.id })
         break
       }
       case 'note.delete':
@@ -806,10 +924,8 @@ async function action(db, actorId, credentialVersion, a, env) {
           const title = required(a.title, 160),
             text = required(a.text, 2000),
             ids = recipients(s, a.recipientIds)
-          for (const u of s.users.filter(
-            (x) => x.active && x.role === 'Employee' && (!ids.length || ids.includes(x.id)),
-          ))
-            notify(s, u.id, title, text, { senderId: actor.id })
+          for (const u of s.users.filter((x) => team(x) && (!ids.length || ids.includes(x.id))))
+            notify(s, u.id, title, text, { kind: 'broadcast', senderId: actor.id })
         }
         break
       case 'notification.read':
@@ -822,10 +938,9 @@ async function action(db, actorId, credentialVersion, a, env) {
         fail('Unknown action.')
     }
     audit(s, actor.id, a.type, subjectId)
-    const newRecipients = new Set(
-      (s.notifications || []).filter((n) => !previousIds.has(n.id)).map((n) => n.employeeId),
-    )
-    return subscriptionsFor(s, newRecipients)
+    const newRows = (s.notifications || []).filter((n) => !previousIds.has(n.id))
+    for (const row of newRows) row.kind = NOTIFICATION_KINDS.has(row.kind) ? row.kind : kindForAction(a.type)
+    return pushEntriesFor(s, newRows)
   })
   if (revoke) await revokeUser(db, revoke)
   return push
@@ -998,7 +1113,8 @@ export async function handlePortalApi(request, env, context) {
     if (endpoint === 'actions' && method === 'POST') {
       // A 512px/32KiB JPEG is ~44KiB as base64; keep the larger body limit scoped to
       // authenticated actions, while all other JSON endpoints retain the 20KiB cap.
-      const push = await action(db, user.id, row.credential_version, await json(request, 50000), env)
+      const body = await json(request, 50000)
+      const push = await action(db, user.id, row.credential_version, body, env)
       if (push?.length)
         context?.waitUntil?.(
           sendBroadcastPush(env, push)
@@ -1096,7 +1212,7 @@ export async function handlePortalApi(request, env, context) {
       const subscriptions = subscriptionsFor(state, new Set([user.id]), MAX_DEVICE_SUBSCRIPTIONS)
       if (await throttle(db, 'pushTest:' + tokenHash(user.id))) fail('Too many attempts. Try again later.', 429)
       // The send is bounded to five owned devices and eight attempts per 15 minutes.
-      const result = await sendBroadcastPush(env, subscriptions)
+      const result = await sendBroadcastPush(env, subscriptions, { kind: 'test' })
       await cleanExpiredPush(db, result)
       return response({
         sent: result.sent,

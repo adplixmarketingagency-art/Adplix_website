@@ -9,6 +9,7 @@ import {
   loginSeconds,
   loginRecordFor,
 } from '../src/portal/domain.mjs'
+import { buildAnalytics } from '../src/portal/analytics.mjs'
 
 const at = (day, time) => `${day}T${time}+05:30`
 const interval = (start, end) => [{ start, end }]
@@ -136,6 +137,25 @@ test('optional employee lifecycle exempts days outside employment without changi
   assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-09', '12:00:00'), employee).status, 'exempt')
   assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-07', '12:00:00'), employee).status, 'overdue')
   assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-05', '12:00:00')).status, 'overdue')
+})
+
+test('reactivated employee has no missing updates during historical disabled periods', () => {
+  const employee = {
+    createdAt: '2026-10-01T04:30:00Z',
+    deactivatedAt: null,
+    inactivePeriods: [{ from: '2026-10-05', to: '2026-10-09' }],
+  }
+  assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-05', '12:00:00'), employee).status, 'overdue')
+  for (const date of ['2026-10-06', '2026-10-07', '2026-10-08'])
+    assert.equal(dailyUpdateStatus('e', [], [], at(date, '12:00:00'), employee).status, 'exempt')
+  assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-09', '12:00:00'), employee).status, 'overdue')
+  const report = buildAnalytics(
+    { employees: [{ id: 'e', role: 'Employee', ...employee }] },
+    { from: '2026-10-05', to: '2026-10-09' },
+    new Date(at('2026-10-10', '18:00:00')),
+  )
+  assert.equal(report.employees[0].updateMissing, 2)
+  assert.equal(report.employees[0].updateExempt, 3)
 })
 
 test('invalid unbounded inputs fail rather than silently produce time', () => {
