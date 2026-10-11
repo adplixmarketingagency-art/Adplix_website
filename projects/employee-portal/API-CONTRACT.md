@@ -35,7 +35,7 @@ Admin snapshots additionally contain `registrations:[{id,name,email,status,creat
 - absence `{id,employeeId,kind:'leave'|'permission',start,end,reason,status:'Pending'|'Approved'|'Rejected',createdAt,decidedAt,decisionNote}`. Leave start/end date strings inclusive; permission ISO instants. Employee sees own requests; Admin sees the review queue and all requests. Reasons and decision notes remain within authorized portal views.
 - note `{id,text,recipientIds:[] (empty = all),authorId,createdAt,author:null|{id,name,role}}`. Visible only to intended recipients and Admin. Author attribution also works for legacy notes; it does not grant access to the author's private profile or contact fields.
 - notification `{id,title,text,kind,createdAt,readAt,sender:null|{id,name,role},taskId?,transitionVersion?}`; own inbox only. `kind` is a whitelisted workflow type, never free-form notification copy. New workflow messages persist sender IDs; legacy rows only infer recognized types and do not invent missing senders. The sidebar count is the number of own notifications with no `readAt`; note alerts count once, not again as separate notes.
-- today business date; updateStatus `{status:'pending'|'overdue'|'on-time'|'late'|'exempt',deadline,submittedAt?}` for logged-in user.
+- today business date; updateStatus `{status:'pending'|'overdue'|'on-time'|'late'|'exempt',deadline,submittedAt?}` for logged-in user. The normal Employee deadline is the 19:00 Asia/Kolkata business-day close; 11:00 submissions remain pending/on-time, and an unsubmitted update becomes overdue at 19:00 unless an approved absence or lifecycle/Sunday exemption applies.
 
 ## Action payloads (flat object including type)
 
@@ -82,4 +82,4 @@ Device pushes use per-recipient `{subscription,kind}` envelopes for committed ac
 
 ## Defaults for this first implementation
 
-Rejection resumes eligible time immediately with required feedback. Approved absence does not move deadlines. Full-day leave exempts updates; permission covering 11:00 moves deadline to next available working instant. No holiday calendar, payroll or uploads. Employees can see task summaries, but not colleagues' private notes, reasons or profiles. Bulk state changes use D1 revision CAS/transactions; no last-writer-wins data loss.
+Rejection resumes eligible time immediately with required feedback. Approved absence does not move task deadlines. Full-day leave exempts updates; permission covering 19:00 moves the update deadline to the next available working instant. No holiday calendar, payroll or uploads. Employees can see task summaries, but not colleagues' private notes, reasons or profiles. Bulk state changes use D1 revision CAS/transactions; no last-writer-wins data loss.

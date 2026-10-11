@@ -148,7 +148,7 @@ Public holidays, company closures, and changes to historical calendars are not s
 
 ## 7. Daily work updates
 
-Employees provide a sentence about their work every working day. The normal deadline is **before 11:00 Asia/Kolkata**. At 11:00 without submission, show a red **Update overdue** badge, including text rather than colour alone. Polling updates the badge without clearing unsaved text. Sunday and approved absence exemptions must not show overdue.
+Employees provide a sentence about their work every working day. The normal deadline is the **19:00 Asia/Kolkata business-day close**. At 19:00 without submission, show a red **Update overdue** badge, including text rather than colour alone; an update submitted at 11:00 remains pending/on-time. Polling updates the badge without clearing unsaved text. Sunday and approved absence exemptions must not show overdue.
 
 Record one daily update per employee/business date, its first submission timestamp, content edits, and current status: pending, on-time, overdue, late, or leave-exempt. An edit does not change the original submission time. Admin can view today's team updates and historical records.
 
@@ -156,7 +156,7 @@ Proposed absence handling:
 
 - Full-day approved leave exempts that day's update.
 - No requirement on Sundays, before joining, or after deactivation.
-- If approved hourly permission covers 11:00, move the update deadline to the employee's next available working instant that day and display it explicitly. Confirm whether a grace period after return is needed.
+- If approved hourly permission covers 19:00, move the update deadline to the employee's next available working instant that day and display it explicitly. Confirm whether a grace period after return is needed.
 - Retroactive approval must recompute any applicable exemption without erasing the original submission/audit timestamps.
 
 ## 8. Leave and hourly permissions
@@ -267,7 +267,7 @@ Portal/API responses must be private and non-cacheable, excluded from public ind
 - [ ] Approved leave and permissions exclude applicable time; rejected/pending requests do not; overlaps deduct once.
 - [ ] Retroactive decisions recalculate totals and exports without deleting audit history.
 - [ ] Red overdue cards include labels and readable contrast; completion and rejection update their presentation correctly.
-- [ ] Daily updates switch to overdue at 11:00, retain original submission time, and apply agreed absence exemptions.
+- [ ] Daily updates remain pending at 11:00, switch to overdue at 19:00, retain original submission time, and apply agreed absence exemptions.
 - [ ] Individual notes, private profile fields, and leave reasons are not leaked through team-task APIs.
 - [ ] Notification-denied/unsupported-browser cases keep in-app messages usable; closed-tab delivery is tested where supported.
 - [ ] Team/individual graph metrics match filtered Excel totals; untrusted export values cannot become formulas.
@@ -279,7 +279,7 @@ Portal/API responses must be private and non-cacheable, excluded from public ind
 1. Authentication implementation/provider and secure initial Admin provisioning; registration requires Admin approval regardless of choice.
 2. Rejection: return to In-progress immediately with mandatory feedback, or wait for an explicit employee restart?
 3. Are title, client, job function, assignee, deadline mandatory on every task? Deadline extension remains an explicit Admin action by default.
-4. Full-day leave/update exemption and shifted 11:00 deadline when hourly permission overlaps it; any grace period after return?
+4. Full-day leave/update exemption and shifted 19:00 deadline when hourly permission overlaps it; any grace period after return?
 5. Holiday/closure calendar, request cancellation, retrospective approval cutoff, and whether half-day leave is needed.
 6. Policy for time attribution if Admin reassigns an In-progress task; preserve per-employee interval ownership rather than rewriting history.
 7. Which task details/deliverable links may colleagues see? Access to external client assets must be governed separately.

@@ -264,6 +264,15 @@ try {
   await adminPage.screenshot({ path: resolve(screenshots, 'portal-login-mobile.png'), fullPage: true })
   await adminPage.setViewportSize({ width: 1440, height: 1000 })
   await login(adminPage, 'admin@example.test', true)
+  await expect(adminPage.getByText('Completed work', { exact: true })).toBeVisible()
+  await expect(adminPage.getByRole('button', { name: 'Switch to dark theme', exact: true })).toBeVisible()
+  await adminPage.getByRole('button', { name: 'Switch to dark theme', exact: true }).click()
+  await expect(adminPage.locator('html')).toHaveAttribute('data-portal-theme', 'dark')
+  await accessibility(adminPage, 'Admin dark theme')
+  await expect(adminPage.getByRole('button', { name: 'Switch to light theme', exact: true })).toBeVisible()
+  await adminPage.getByRole('button', { name: 'Switch to light theme', exact: true }).click()
+  await expect(adminPage.locator('html')).toHaveAttribute('data-portal-theme', 'light')
+  await expect(adminPage.getByRole('button', { name: 'Refresh', exact: true }).locator('svg')).toBeVisible()
   await verifyProfilePhoto(adminPage, screenshots, 'admin')
   const adminPhoto = await saveSyntheticPhoto(adminPage)
   // Mobile install instructions are real DOM coverage, not physical-device push proof.
@@ -936,6 +945,11 @@ try {
   await adminPage.screenshot({ path: resolve(screenshots, 'admin-analytics.png'), fullPage: true })
   await adminPage.setViewportSize({ width: 375, height: 812 })
   await noOverflow(adminPage)
+  const firstAttendanceRow = adminPage.locator('.employee-row').first()
+  assert.ok(
+    (await firstAttendanceRow.locator('.employee-label').boundingBox()).height < 120,
+    'Mobile Analytics row should stay compact',
+  )
   await accessibility(adminPage, 'Admin mobile category analytics')
   await adminPage.screenshot({ path: resolve(screenshots, 'admin-analytics-mobile.png'), fullPage: true })
   await adminPage.setViewportSize({ width: 812, height: 375 })

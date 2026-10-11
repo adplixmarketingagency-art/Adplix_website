@@ -28,6 +28,14 @@ import {
 
 const root = document.querySelector('#app')
 const API = '/api/portal'
+const PORTAL_THEME_KEY = 'adplix-portal-theme'
+const savedTheme = (() => {
+  try {
+    return localStorage.getItem(PORTAL_THEME_KEY) === 'dark' ? 'dark' : 'light'
+  } catch {
+    return 'light'
+  }
+})()
 const state = {
   user: null,
   csrf: '',
@@ -52,6 +60,7 @@ const state = {
   message: '',
   error: '',
   notificationPopup: null,
+  theme: savedTheme,
 }
 let photoCropController = null
 let snapshotPolling = false
@@ -108,10 +117,18 @@ const glimpses = installProfileGlimpses({
 const admin = () => state.user?.role === 'Admin'
 const adminViews = ['team', 'clients', 'admin-tasks', 'reviews', 'notes', 'analytics']
 const permittedView = (name) => (!admin() && adminViews.includes(name) ? 'dashboard' : name)
-const svgIcon = (name) =>
-  name === 'menu'
-    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>'
-    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>'
+const svgIcon = (name) => {
+  const icons = {
+    menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
+    close:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>',
+    refresh:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8.1 8.1 0 0 0-14.9-3.7L3 10"/><path d="M3 4v6h6"/><path d="M4 13a8.1 8.1 0 0 0 14.9 3.7L21 14"/><path d="M21 20v-6h-6"/></svg>',
+    moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 15.3A8.5 8.5 0 0 1 8.7 3.5 8.5 8.5 0 1 0 20.5 15.3Z"/></svg>',
+    sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  }
+  return icons[name] || icons.close
+}
 const kolkataISO = (value) => {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) throw new Error('Enter a valid Asia/Kolkata date and time.')
   const iso = new Date(`${value}:00+05:30`)
@@ -173,6 +190,34 @@ const select = (name, title, items, selected = '', required = true) =>
   field(title, `<select name="${name}" ${required ? 'required' : ''}>${options(items, selected)}</select>`)
 const btn = (text, action, id = '', cls = '') =>
   `<button type="button" class="${cls}" data-action="${action}" data-id="${esc(id)}">${text}</button>`
+const iconBtn = (label, icon, action, id = '', cls = '') =>
+  `<button type="button" class="${cls}" data-action="${action}" data-id="${esc(id)}" aria-label="${esc(label)}" title="${esc(label)}">${svgIcon(icon)}</button>`
+const themeControl = () =>
+  iconBtn(
+    state.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme',
+    state.theme === 'dark' ? 'sun' : 'moon',
+    'theme-toggle',
+    '',
+    'theme-control',
+  )
+const authCardTop = () => `<div class="auth-card-top">${portalBrand()}${themeControl()}</div>`
+const refreshControl = () => iconBtn('Refresh', 'refresh', 'refresh', '', 'refresh-control')
+const applyPortalTheme = () => {
+  document.documentElement.dataset.portalTheme = state.theme
+  try {
+    localStorage.setItem(PORTAL_THEME_KEY, state.theme)
+  } catch {
+    // Theme preference is a convenience; rendering must work when storage is blocked.
+  }
+}
+const syncThemeControls = () => {
+  applyPortalTheme()
+  document.querySelectorAll('[data-action="theme-toggle"]').forEach((node) => {
+    const replacement = document.createRange().createContextualFragment(themeControl()).firstElementChild
+    node.replaceWith(replacement)
+  })
+}
+applyPortalTheme()
 const taskButton = (text, action, task, nextState, cls = '') =>
   btn(text, action, task.id, cls).replace(
     '<button ',
@@ -321,22 +366,22 @@ function login() {
   inboxTracker.reset()
   state.notificationPopup = null
   glimpses.close()
-  root.innerHTML = `<main class="auth"><div class="auth-card">${portalBrand()}<p class="eyebrow">Private workspace</p><h1>Welcome back.</h1><p class="muted">Sign in with your approved email address.</p><div id="feedback" class="feedback ${state.error ? 'error' : ''}" role="alert" tabindex="-1">${esc(state.error)}</div><form data-form="login">${input('email', 'Email address', 'email', '', 'required autocomplete="username"')}${input('password', 'Portal password', 'password', '', 'required autocomplete="current-password"')}<button class="show-pass" type="button" data-action="show-password" aria-label="Show password" aria-pressed="false">Show password</button><button class="primary full" type="submit">Sign in</button></form><button class="text-button" type="button" data-action="register">Register / request access</button><p class="fine">New accounts require administrator approval before sign-in.</p></div></main>`
+  root.innerHTML = `<main class="auth"><div class="auth-card">${authCardTop()}<p class="eyebrow">Private workspace</p><h1>Welcome back.</h1><p class="muted">Sign in with your approved email address.</p><div id="feedback" class="feedback ${state.error ? 'error' : ''}" role="alert" tabindex="-1">${esc(state.error)}</div><form data-form="login">${input('email', 'Email address', 'email', '', 'required autocomplete="username"')}${input('password', 'Portal password', 'password', '', 'required autocomplete="current-password"')}<button class="show-pass" type="button" data-action="show-password" aria-label="Show password" aria-pressed="false">Show password</button><button class="primary full" type="submit">Sign in</button></form><button class="text-button" type="button" data-action="register">Register / request access</button><p class="fine">New accounts require administrator approval before sign-in.</p></div></main>`
 }
 function register() {
   glimpses.close()
   state.error = ''
-  root.innerHTML = `<main class="auth"><div class="auth-card">${portalBrand()}<p class="eyebrow">Request access</p><h1>Register for the workspace</h1><p class="muted">An administrator will review your request before you can sign in.</p><div id="feedback" class="feedback" role="alert" tabindex="-1"></div><form data-form="register">${input('name', 'Full name', 'text', '', 'required autocomplete="name"')}${input('designation', 'Designation', 'text', '', 'required')}${input('email', 'Email address', 'email', '', 'required autocomplete="email"')}${input('password', 'Password (at least 12 characters)', 'password', '', 'required minlength="12" autocomplete="new-password"')}${input('confirmation', 'Confirm password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button class="primary full" type="submit">Request access</button></form><button class="text-button" type="button" data-action="sign-in">Back to sign in</button></div></main>`
+  root.innerHTML = `<main class="auth"><div class="auth-card">${authCardTop()}<p class="eyebrow">Request access</p><h1>Register for the workspace</h1><p class="muted">An administrator will review your request before you can sign in.</p><div id="feedback" class="feedback" role="alert" tabindex="-1"></div><form data-form="register">${input('name', 'Full name', 'text', '', 'required autocomplete="name"')}${input('designation', 'Designation', 'text', '', 'required')}${input('email', 'Email address', 'email', '', 'required autocomplete="email"')}${input('password', 'Password (at least 12 characters)', 'password', '', 'required minlength="12" autocomplete="new-password"')}${input('confirmation', 'Confirm password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button class="primary full" type="submit">Request access</button></form><button class="text-button" type="button" data-action="sign-in">Back to sign in</button></div></main>`
   root.querySelector('[name="name"]')?.focus()
 }
 function registrationConfirmation(message) {
   glimpses.close()
-  root.innerHTML = `<main class="auth"><div class="auth-card">${portalBrand()}<p class="eyebrow">Request sent</p><h1 tabindex="-1">Wait for administrator approval</h1><p class="muted">${esc(message || 'Your registration request was received. You can sign in after an administrator approves it.')}</p><button class="text-button" type="button" data-action="sign-in">Back to sign in</button></div></main>`
+  root.innerHTML = `<main class="auth"><div class="auth-card">${authCardTop()}<p class="eyebrow">Request sent</p><h1 tabindex="-1">Wait for administrator approval</h1><p class="muted">${esc(message || 'Your registration request was received. You can sign in after an administrator approves it.')}</p><button class="text-button" type="button" data-action="sign-in">Back to sign in</button></div></main>`
   root.querySelector('h1')?.focus()
 }
 function changePassword() {
   glimpses.close()
-  root.innerHTML = `<main class="auth"><div class="auth-card">${portalBrand()}<p class="eyebrow">Account security</p><h1>Set a new password</h1><p class="muted">Your temporary password must be changed before opening the workspace. Current password means the temporary password you used to sign in.</p><div id="feedback" class="feedback" role="alert" tabindex="-1"></div><form data-form="password">${input('currentPassword', 'Current password', 'password', '', 'required autocomplete="current-password"')}${input('newPassword', 'New password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button class="primary full" type="submit">Update password</button></form><button class="text-button" type="button" data-action="logout">Sign out</button></div></main>`
+  root.innerHTML = `<main class="auth"><div class="auth-card">${authCardTop()}<p class="eyebrow">Account security</p><h1>Set a new password</h1><p class="muted">Your temporary password must be changed before opening the workspace. Current password means the temporary password you used to sign in.</p><div id="feedback" class="feedback" role="alert" tabindex="-1"></div><form data-form="password">${input('currentPassword', 'Current password', 'password', '', 'required autocomplete="current-password"')}${input('newPassword', 'New password', 'password', '', 'required minlength="12" autocomplete="new-password"')}<button class="primary full" type="submit">Update password</button></form><button class="text-button" type="button" data-action="logout">Sign out</button></div></main>`
 }
 function navigation() {
   const unread = unreadCount(state.snapshot?.notifications)
@@ -424,7 +469,7 @@ function shell() {
     analytics: analyticsView,
   }
   content = (views[state.view] || dashboard)()
-  root.innerHTML = `<a class="skip-link" href="#main">Skip to content</a><div class="layout">${navigation()}<div class="scrim ${state.drawer ? 'visible' : ''}" data-action="drawer"></div><div class="work"><header class="topbar"><button type="button" class="menu" data-action="drawer" aria-controls="sidebar" aria-label="Open menu" aria-expanded="${state.drawer}">${svgIcon('menu')}</button><div class="topbar-context"><span class="eyebrow">Adplix Media / ${esc(state.view.replaceAll('-', ' '))}</span><p>${esc(state.snapshot?.today || '')}</p></div><div class="identity">${photoAvatar(state.user, 'identity-avatar')}<div class="identity-copy"><strong>${personName(state.user, state.user.name)}</strong><div class="identity-meta"><span>${esc(state.user.role)}</span><span>${esc(state.user.designation || 'Unassigned')}</span></div></div></div>${btn('Refresh', 'refresh', '', 'refresh-control')}</header><main id="main" class="content" tabindex="-1"><div id="feedback" class="feedback ${state.error ? 'error' : state.message ? 'success' : ''}" role="alert" tabindex="-1">${esc(state.error || state.message)}</div>${content}</main></div></div><dialog id="modal" aria-labelledby="modal-title"><div id="modal-body"></div><button class="dialog-close" type="button" data-action="close-modal" aria-label="Close dialog">${svgIcon('close')}</button></dialog>`
+  root.innerHTML = `<a class="skip-link" href="#main">Skip to content</a><div class="layout">${navigation()}<div class="scrim ${state.drawer ? 'visible' : ''}" data-action="drawer"></div><div class="work"><header class="topbar"><button type="button" class="menu" data-action="drawer" aria-controls="sidebar" aria-label="Open menu" aria-expanded="${state.drawer}">${svgIcon('menu')}</button><div class="topbar-context"><span class="eyebrow">Adplix Media / ${esc(state.view.replaceAll('-', ' '))}</span><p>${esc(state.snapshot?.today || '')}</p></div>${themeControl()}${refreshControl()}<div class="identity">${photoAvatar(state.user, 'identity-avatar')}<div class="identity-copy"><strong>${personName(state.user, state.user.name)}</strong><div class="identity-meta"><span>${esc(state.user.role)}</span><span>${esc(state.user.designation || 'Unassigned')}</span></div></div></div></header><main id="main" class="content" tabindex="-1"><div id="feedback" class="feedback ${state.error ? 'error' : state.message ? 'success' : ''}" role="alert" tabindex="-1">${esc(state.error || state.message)}</div>${content}</main></div></div><dialog id="modal" aria-labelledby="modal-title"><div id="modal-body"></div><button class="dialog-close" type="button" data-action="close-modal" aria-label="Close dialog">${svgIcon('close')}</button></dialog>`
   glimpses.sync()
   renderInboxPopup()
   syncDailyStatuses(state.snapshot)
@@ -476,17 +521,20 @@ function dashboard() {
     active = own.filter((t) => t.state !== 'Approved')
   const all = sortTasks(arr(s.tasks)),
     review = all.filter((t) => t.state === 'Completed'),
+    completedWork = all.filter((t) => ['Completed', 'Approved'].includes(t.state)),
     overdue = all.filter((t) => t.overdue)
   const update = s.updateStatus || {},
     today = arr(s.updates).find((u) => u.employeeId === state.user.id && u.date === s.today)
   return `<div class="hero"><div><p class="eyebrow">${admin() ? 'Team operations' : 'Your workspace'}</p><h1>${admin() ? 'Keep work moving.' : 'Today’s work, in focus.'}</h1><p class="muted">${admin() ? 'Assignments, approvals and updates in one place.' : 'Your tasks and daily check-in, without the noise.'}</p></div></div><div class="metrics">${(admin()
     ? [
         ['Active tasks', all.filter((t) => ['Assigned', 'In-progress'].includes(t.state)).length],
+        ['Completed work', completedWork.length],
         ['Awaiting review', review.length],
         ['Overdue', overdue.length],
       ]
     : [
         ['Open tasks', active.length],
+        ['Completed work', own.filter((t) => ['Completed', 'Approved'].includes(t.state)).length],
         ['Overdue', active.filter((t) => t.overdue).length],
         ['Working today', s.today || '—'],
       ]
@@ -503,7 +551,7 @@ function dashboard() {
     !admin()
       ? section(
           'Daily update',
-          `<p class="muted" id="daily-status">${statusTag(update.status)} ${update.deadline ? `Due ${fmtDateTime(update.deadline)}` : ''}</p><form data-form="update">${area('text', 'What are you working on today?', today?.text || '', 'required maxlength="2000" rows="4"')}<button class="primary" type="submit">${today ? 'Save update' : 'Submit update'}</button></form>`,
+          `<p class="muted" id="daily-status">${statusTag(update.status)} ${update.deadline ? `Due ${fmtDateTime(update.deadline)}` : ''}</p><p class="fine">Daily updates stay open until the 19:00 IST business-day close.</p><form data-form="update">${area('text', 'What are you working on today?', today?.text || '', 'required maxlength="2000" rows="4"')}<button class="primary" type="submit">${today ? 'Save update' : 'Submit update'}</button></form>`,
         )
       : section(
           'Team updates today',
@@ -1350,6 +1398,11 @@ async function handleAction(button) {
   }
   if (action === 'drawer') {
     setDrawer(!state.drawer)
+    return
+  }
+  if (action === 'theme-toggle') {
+    state.theme = state.theme === 'dark' ? 'light' : 'dark'
+    syncThemeControls()
     return
   }
   if (action === 'refresh') {

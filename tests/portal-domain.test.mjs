@@ -104,7 +104,9 @@ test('transitions enforce ownership, role, reason and preserve audit intervals',
 test('daily update deadline, Sunday, leave and permission', () => {
   const now = at('2026-10-05', '11:00:00')
   assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-05', '10:59:59')).status, 'pending')
-  assert.equal(dailyUpdateStatus('e', [], [], now).status, 'overdue')
+  assert.equal(dailyUpdateStatus('e', [], [], now).status, 'pending')
+  assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-05', '19:00:00')).status, 'overdue')
+  assert.equal(dailyUpdateStatus('e', [], [], now).deadline, new Date(at('2026-10-05', '19:00:00')).toISOString())
   assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-04', '11:00:00')).status, 'exempt')
   const leave = [{ employeeId: 'e', kind: 'leave', start: '2026-10-05', end: '2026-10-07', status: 'Approved' }]
   assert.equal(dailyUpdateStatus('e', [], leave, now).status, 'exempt')
@@ -119,8 +121,18 @@ test('daily update deadline, Sunday, leave and permission', () => {
   ]
   assert.equal(
     dailyUpdateStatus('e', [], permission, now).deadline,
-    new Date(at('2026-10-05', '12:00:00')).toISOString(),
+    new Date(at('2026-10-05', '19:00:00')).toISOString(),
   )
+  const closePermission = [
+    {
+      employeeId: 'e',
+      kind: 'permission',
+      start: at('2026-10-05', '18:30:00'),
+      end: at('2026-10-05', '20:00:00'),
+      status: 'Approved',
+    },
+  ]
+  assert.equal(dailyUpdateStatus('e', [], closePermission, now).status, 'exempt')
   const updates = [
     {
       employeeId: 'e',
@@ -130,15 +142,17 @@ test('daily update deadline, Sunday, leave and permission', () => {
     },
   ]
   assert.equal(dailyUpdateStatus('e', updates, [], now).status, 'on-time')
-  assert.equal(dailyUpdateStatus('e', [{ ...updates[0], submittedAt: now }], [], now).status, 'late')
+  assert.equal(dailyUpdateStatus('e', [{ ...updates[0], submittedAt: now }], [], now).status, 'on-time')
+  const close = at('2026-10-05', '19:00:00')
+  assert.equal(dailyUpdateStatus('e', [{ ...updates[0], submittedAt: close }], [], close).status, 'late')
 })
 
 test('optional employee lifecycle exempts days outside employment without changing four-argument behavior', () => {
   const employee = { createdAt: '2026-10-06T12:00:00Z', deactivatedAt: '2026-10-08T08:00:00Z' }
   assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-05', '12:00:00'), employee).status, 'exempt')
   assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-09', '12:00:00'), employee).status, 'exempt')
-  assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-07', '12:00:00'), employee).status, 'overdue')
-  assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-05', '12:00:00')).status, 'overdue')
+  assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-07', '19:00:00'), employee).status, 'overdue')
+  assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-05', '19:00:00')).status, 'overdue')
 })
 
 test('reactivated employee has no missing updates during historical disabled periods', () => {
@@ -147,10 +161,10 @@ test('reactivated employee has no missing updates during historical disabled per
     deactivatedAt: null,
     inactivePeriods: [{ from: '2026-10-05', to: '2026-10-09' }],
   }
-  assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-05', '12:00:00'), employee).status, 'overdue')
+  assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-05', '19:00:00'), employee).status, 'overdue')
   for (const date of ['2026-10-06', '2026-10-07', '2026-10-08'])
     assert.equal(dailyUpdateStatus('e', [], [], at(date, '12:00:00'), employee).status, 'exempt')
-  assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-09', '12:00:00'), employee).status, 'overdue')
+  assert.equal(dailyUpdateStatus('e', [], [], at('2026-10-09', '19:00:00'), employee).status, 'overdue')
   const report = buildAnalytics(
     { employees: [{ id: 'e', role: 'Employee', ...employee }] },
     { from: '2026-10-05', to: '2026-10-09' },

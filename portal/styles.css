@@ -1134,3 +1134,469 @@ dialog h2 {
 .task-rating::first-letter {
   color: #d59a36;
 }
+
+/* Compact topbar controls keep the existing DOM order while making icon-only
+   actions predictable at narrow widths. The text remains in the DOM for the
+   accessible name. */
+:is(button.refresh-control, button.theme-control, button.theme-toggle, button[data-action='theme']) {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  overflow: hidden;
+  font-size: 0;
+  line-height: 1;
+}
+
+button.refresh-control::before {
+  content: '↻';
+  font-size: 1.35rem;
+  font-weight: 500;
+}
+
+:is(button.theme-control, button.theme-toggle, button[data-action='theme'])::before {
+  content: '☾';
+  font-size: 1.15rem;
+  font-weight: 650;
+}
+
+@media (max-width: 540px) {
+  .topbar {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .topbar:has(button.theme-control, button.theme-toggle, button[data-action='theme']) {
+    grid-template-columns: 44px minmax(0, 1fr) repeat(2, 44px);
+  }
+
+  .topbar .menu {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+  }
+
+  .topbar .identity {
+    width: 100%;
+    min-width: 0;
+    margin-left: 0;
+  }
+
+  .topbar .identity-copy {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .topbar .refresh-control {
+    margin-left: 0;
+    justify-self: end;
+  }
+}
+
+/* Portal-only dark theme foundation. The light palette above remains the
+   default whenever this attribute is absent. */
+html[data-portal-theme='dark'] {
+  color-scheme: dark;
+  --ink: #f5f1eb;
+  --muted: #b7aea5;
+  --line: #514a45;
+  --surface: #292724;
+  --surface-soft: #34302c;
+  --paper: #292724;
+  --panel: #292724;
+  --red: #e36b5a;
+  --red-dark: #ff9b89;
+  --red-soft: #4a2723;
+  --shadow: 0 16px 40px rgb(0 0 0 / 32%), inset 0 1px rgb(255 255 255 / 4%);
+}
+
+html[data-portal-theme='dark'],
+html[data-portal-theme='dark'] body,
+html[data-portal-theme='dark'] #app,
+html[data-portal-theme='dark'] .layout,
+html[data-portal-theme='dark'] .work {
+  background: #201e1c;
+  color: var(--ink);
+}
+
+html[data-portal-theme='dark'] :is(button, input, textarea, select) {
+  color: var(--ink);
+}
+
+html[data-portal-theme='dark'] button {
+  border-color: #5d564f;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+html[data-portal-theme='dark'] button:hover {
+  border-color: var(--red);
+  background: #3a342f;
+  box-shadow: 0 7px 18px rgb(0 0 0 / 26%);
+}
+
+html[data-portal-theme='dark'] button:disabled {
+  color: #8d857d;
+}
+
+html[data-portal-theme='dark'] .primary,
+html[data-portal-theme='dark'] .analytics-quick-filter.is-active {
+  border-color: var(--red);
+  background: #b7463a;
+  color: #fff8f3;
+}
+
+html[data-portal-theme='dark'] .primary:hover,
+html[data-portal-theme='dark'] .analytics-quick-filter.is-active:hover:not(:disabled) {
+  border-color: #e87867;
+  background: #b7463a;
+  color: #fff8f3;
+}
+
+html[data-portal-theme='dark'] .danger,
+html[data-portal-theme='dark'] .text-button,
+html[data-portal-theme='dark'] .show-pass,
+html[data-portal-theme='dark'] .inline-link,
+html[data-portal-theme='dark'] .chart-data summary {
+  color: #ff9b89;
+}
+
+html[data-portal-theme='dark'] .quiet {
+  border-color: #6a6259;
+  background: transparent;
+  color: #f5f1eb;
+}
+
+html[data-portal-theme='dark'] .inbox-count {
+  background: #b7463a;
+  color: #fff8f3;
+}
+
+html[data-portal-theme='dark'] .muted,
+html[data-portal-theme='dark'] .fine,
+html[data-portal-theme='dark'] .empty,
+html[data-portal-theme='dark'] .chart-note,
+html[data-portal-theme='dark'] .task-meta,
+html[data-portal-theme='dark'] .list-item small,
+html[data-portal-theme='dark'] .employee-attendance,
+html[data-portal-theme='dark'] .analytics-kpis .metric small {
+  color: var(--muted);
+}
+
+html[data-portal-theme='dark'] .skip-link {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: #ff9b89;
+}
+
+html[data-portal-theme='dark']
+  :is(
+    .auth-card,
+    .calendar-month,
+    .metric,
+    .panel,
+    .task-card,
+    .inbox-popup,
+    .analytics-quick-filter,
+    .progress-section,
+    .pipeline-cohort,
+    .historical-event
+  ) {
+  border-color: var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+html[data-portal-theme='dark'] .field :is(input, select, textarea) {
+  border-color: #5b554e;
+  background: #211f1d;
+  color: var(--ink);
+}
+
+html[data-portal-theme='dark'] .field :is(input, select, textarea)::placeholder {
+  color: #918980;
+}
+
+html[data-portal-theme='dark'] .field :is(input, select, textarea):focus {
+  border-color: var(--red);
+  background: #282421;
+}
+
+html[data-portal-theme='dark'] fieldset,
+html[data-portal-theme='dark'] .list-item,
+html[data-portal-theme='dark'] .admin-account-list {
+  border-color: var(--line);
+}
+
+html[data-portal-theme='dark'] .sidebar {
+  background: #171615;
+  color: #f5f1eb;
+  box-shadow: 10px 0 30px rgb(0 0 0 / 34%);
+}
+
+html[data-portal-theme='dark'] .sidebar nav a {
+  color: #d9d1c8;
+}
+
+html[data-portal-theme='dark'] .sidebar nav a:hover {
+  color: #fffaf5;
+  background: #332e2b;
+}
+
+html[data-portal-theme='dark'] .sidebar nav a.active {
+  color: #fffaf5;
+  background: #4b302c;
+  box-shadow: inset 3px 0 #ed7967;
+}
+
+html[data-portal-theme='dark'] .side-foot {
+  border-color: #4d4842;
+}
+
+html[data-portal-theme='dark'] .side-foot small {
+  color: #b6ada4;
+}
+
+html[data-portal-theme='dark'] .side-close {
+  color: #fffaf5;
+}
+
+html[data-portal-theme='dark'] .topbar {
+  border-color: var(--line);
+  background: #252321;
+}
+
+html[data-portal-theme='dark'] .topbar p,
+html[data-portal-theme='dark'] .identity-meta {
+  color: var(--muted);
+}
+
+html[data-portal-theme='dark'] .identity-meta span + span {
+  border-color: #554e47;
+}
+
+html[data-portal-theme='dark'] :is(.identity-avatar, .employee-avatar, .profile-photo-preview) {
+  background: #4a2925;
+  color: #ffb0a0;
+}
+
+html[data-portal-theme='dark'] .badge {
+  border-color: #5b544c;
+  background: #37312c;
+  color: #e6ddd4;
+}
+
+html[data-portal-theme='dark'] .calendar-weekdays,
+html[data-portal-theme='dark'] .metric span,
+html[data-portal-theme='dark'] .bar-label span,
+html[data-portal-theme='dark'] .employee-label span,
+html[data-portal-theme='dark'] .employee-attendance span {
+  color: var(--muted);
+}
+
+html[data-portal-theme='dark'] .calendar-days span {
+  border-color: #47413c;
+}
+
+html[data-portal-theme='dark'] .calendar-days .has-event {
+  background: #4b2925;
+  color: #ffb2a4;
+}
+
+html[data-portal-theme='dark'] .task-card p {
+  color: #cbc1b7;
+}
+
+html[data-portal-theme='dark'] .tag {
+  background: #3a3530;
+  color: #eee6de;
+}
+
+html[data-portal-theme='dark'] .tag--overdue {
+  background: #5b2d28;
+  color: #ffc2b7;
+}
+
+html[data-portal-theme='dark'] .tag--late {
+  background: #55421f;
+  color: #ffe1a2;
+}
+
+html[data-portal-theme='dark'] .tag--on-time {
+  background: #285139;
+  color: #c0efd1;
+}
+
+html[data-portal-theme='dark'] :is(.tag--pending, .tag--exempt) {
+  background: #3a3530;
+  color: #eee6de;
+}
+
+html[data-portal-theme='dark'] .overdue-label {
+  color: #ff9c8d;
+}
+
+html[data-portal-theme='dark'] .table-wrap:focus-visible {
+  outline-color: #ffad9e;
+}
+
+html[data-portal-theme='dark'] th,
+html[data-portal-theme='dark'] td {
+  border-color: #48423c;
+}
+
+html[data-portal-theme='dark'] thead {
+  background: #34302c;
+}
+
+html[data-portal-theme='dark'] .bar-track,
+html[data-portal-theme='dark'] .stacked-track {
+  background: #48413b;
+}
+
+html[data-portal-theme='dark'] .bar-label strong,
+html[data-portal-theme='dark'] .employee-label strong {
+  color: var(--ink);
+}
+
+html[data-portal-theme='dark'] .trend-chart {
+  border-color: var(--line);
+}
+
+html[data-portal-theme='dark'] .trend-date {
+  color: var(--muted);
+}
+
+html[data-portal-theme='dark'] .chart-legend span {
+  border-color: #4b4540;
+  background: #34302c;
+  color: #e7ded5;
+}
+
+html[data-portal-theme='dark'] .feedback.error {
+  border-color: #88483f;
+  background: #432522;
+  color: #ffc0b5;
+}
+
+html[data-portal-theme='dark'] .feedback.success {
+  border-color: #3f7659;
+  background: #203b2d;
+  color: #b9e8c9;
+}
+
+html[data-portal-theme='dark'] dialog {
+  border-color: #5b554e;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+html[data-portal-theme='dark'] dialog::backdrop {
+  background: rgb(0 0 0 / 78%);
+}
+
+html[data-portal-theme='dark'] .dialog-close {
+  background: transparent;
+  color: var(--ink);
+}
+
+html[data-portal-theme='dark'] .scrim.visible {
+  background: rgb(0 0 0 / 70%);
+}
+
+html[data-portal-theme='dark'] :is(button, a, input, textarea, select, summary):focus-visible {
+  outline-color: #ffad9e;
+}
+
+html[data-portal-theme='dark'] :is(button.theme-control, button.theme-toggle, button[data-action='theme'])::before {
+  content: '☀';
+}
+
+/* The controls use real SVG icons; keep their accessible labels while avoiding
+   text glyphs that vary between operating systems. */
+:is(button.refresh-control, button.theme-control, button.theme-toggle, button[data-action='theme'])::before {
+  content: none;
+}
+:is(button.refresh-control, button.theme-control, button.theme-toggle, button[data-action='theme']) svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.auth-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+  margin-bottom: 32px;
+}
+.auth-card-top .portal-brand {
+  min-width: 0;
+  flex: 1 1 180px;
+}
+.auth-card-top .portal-brand-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.auth-card-top .portal-brand--auth {
+  margin-bottom: 0;
+}
+.auth-card-top .theme-control {
+  flex: 0 0 44px;
+}
+@media (max-width: 540px) {
+  .topbar {
+    display: flex;
+    grid-template-columns: none;
+    align-items: center;
+  }
+  .topbar .menu,
+  .topbar .theme-control,
+  .topbar .refresh-control {
+    flex: 0 0 44px;
+  }
+  .topbar .identity {
+    width: auto;
+    flex: 0 1 auto;
+    margin-left: auto;
+  }
+  .topbar .identity-copy {
+    width: auto;
+    max-width: 112px;
+  }
+}
+@media (max-width: 380px) {
+  .topbar .identity {
+    width: auto;
+    max-width: 132px;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .topbar .identity-copy {
+    display: grid;
+    width: auto;
+    max-width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .topbar .identity-meta {
+    display: none;
+  }
+  .topbar .identity-copy strong {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

@@ -159,3 +159,130 @@
     width: 100%;
   }
 }
+
+html[data-portal-theme='dark'] .task-card.task-state--assigned {
+  border-color: #496780;
+  background: #202e3b;
+  box-shadow: inset 3px 0 #6e9dcc;
+}
+
+html[data-portal-theme='dark'] .task-card.task-state--in-progress {
+  border-color: #765c2c;
+  background: #3a2f1d;
+  box-shadow: inset 3px 0 #d49d3a;
+}
+
+html[data-portal-theme='dark'] .task-card.task-state--completed {
+  border-color: #3f7659;
+  background: #203b2d;
+  box-shadow: inset 3px 0 #62b985;
+}
+
+html[data-portal-theme='dark'] .task-card.task-state--approved {
+  border-color: #66507f;
+  background: #30263d;
+  box-shadow: inset 3px 0 #aa91c6;
+}
+
+html[data-portal-theme='dark'] .task-card.task-state--overdue {
+  border-color: #88483f;
+  background: #432522;
+  box-shadow: inset 3px 0 #e36b5a;
+}
+
+html[data-portal-theme='dark'] .task-card .tag.task-state--assigned {
+  background: #294963;
+  color: #c9e3f7;
+}
+
+html[data-portal-theme='dark'] .task-card .tag.task-state--in-progress {
+  background: #55421f;
+  color: #ffe1a2;
+}
+
+html[data-portal-theme='dark'] .task-card .tag.task-state--completed {
+  background: #285139;
+  color: #c0efd1;
+}
+
+html[data-portal-theme='dark'] .task-card .tag.task-state--approved {
+  background: #49385c;
+  color: #e7d8f7;
+}
+
+html[data-portal-theme='dark'] .task-card .tag.task-state--overdue {
+  background: #5b2d28;
+  color: #ffc2b7;
+}
+
+html[data-portal-theme='dark'] .profile-photo-preview {
+  background: #4a2925;
+  color: #ffb0a0;
+}
+
+html[data-portal-theme='dark'] .photo-controls :is(input, select) {
+  border-color: #5b554e;
+  background: #211f1d;
+  color: var(--ink);
+}
+
+html[data-portal-theme='dark'] .photo-controls input[type='file']::file-selector-button {
+  border-color: #5d564f;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+html[data-portal-theme='dark'] .photo-controls :is(input, select, button):focus-visible {
+  outline-color: #ffad9e;
+}
+
+/* Profile glimpses and photo dialogs are declared in a later stylesheet; the
+   html attribute keeps these portal-scoped overrides stronger without editing
+   their component stylesheet. */
+html[data-portal-theme='dark'] .profile-glimpse,
+html[data-portal-theme='dark'] .profile-photo-dialog {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 48%);
+}
+
+html[data-portal-theme='dark'] .profile-glimpse__close,
+html[data-portal-theme='dark'] .profile-photo-dialog__close {
+  background: transparent;
+  color: var(--ink);
+}
+
+html[data-portal-theme='dark'] .profile-glimpse__photo-button,
+html[data-portal-theme='dark'] .profile-glimpse__initials {
+  border-color: #70483f;
+  background: #4a2925;
+  color: #ffb0a0;
+}
+
+html[data-portal-theme='dark'] .profile-glimpse__role,
+html[data-portal-theme='dark'] .profile-glimpse__details dt {
+  color: var(--muted);
+}
+
+html[data-portal-theme='dark'] .profile-glimpse__details {
+  border-color: var(--line);
+}
+
+html[data-portal-theme='dark'] .profile-glimpse__inactive {
+  background: #4a2925;
+  color: #ffb0a0;
+}
+
+html[data-portal-theme='dark'] .profile-name:is(:hover, :focus-visible, [aria-expanded='true']) {
+  color: #ff9b89;
+}
+
+html[data-portal-theme='dark'] .profile-glimpse :is(button):focus-visible,
+html[data-portal-theme='dark'] .profile-photo-dialog :is(button):focus-visible {
+  outline-color: #ffad9e;
+}
+
+html[data-portal-theme='dark'] .profile-photo-dialog::backdrop {
+  background: rgb(0 0 0 / 78%);
+}

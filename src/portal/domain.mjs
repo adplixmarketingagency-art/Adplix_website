@@ -141,7 +141,7 @@ export function dailyUpdateStatus(employeeId, updates = [], absences = [], now =
   const current = instant(now)
   const today = businessDate(current)
   const day = dateStart(today)
-  const deadline = day + 11 * 3_600_000
+  const deadline = day + 19 * 3_600_000
   const submitted = updates
     .filter((u) => u.employeeId === employeeId && u.date === today)
     .map((u) => instant(u.submittedAt))

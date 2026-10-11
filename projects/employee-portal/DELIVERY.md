@@ -1,5 +1,13 @@
 # Employee Portal — Delivery and Setup
 
+## Overview, theme and mobile navigation polish
+
+Overview now includes a **Completed work** metric for both Admin and Employee dashboards, counting current Completed/Approved work. Daily updates no longer become overdue at 11:00; the normal deadline is the **19:00 IST business-day close**, with existing Sunday, leave, permission and lifecycle exemptions preserved.
+
+The portal now has a persisted light/dark theme switch scoped to the Employee Portal, using the existing Adplix charcoal/off-white/red visual language. Dark styling covers auth, navigation, forms, cards, tasks, Analytics charts, tables, dialogs and profile surfaces. Analytics mobile attendance rows no longer reserve a large blank block above the completion count. The topbar refresh action is now a real accessible SVG icon, and the mobile profile identity sits at the right edge of the navigation bar.
+
+Verification: Node 22 `npm test` passed **168 tests**; lint, formatting, portal build, marketing browser checks, portal browser checks (including dark-theme accessibility), deployment preview and `git diff --check` passed. The browser suite used synthetic local D1 data; no production records were changed.
+
 ## Analytics dashboard and Admin availability requests
 
 Analytics now uses a dashboard-style presentation instead of one dense mixed timeline. The report starts with current-work KPIs for **Created**, **Done**, **Open** and **Completion rate**, followed by separate accessible **Completed over time** and **Approved over time** bar charts. Current assignment cohorts are shown in a dedicated **Current work pipeline**, while first-transition history is separated into a **Historical event timeline**. Exact-value tables remain available below the visual summaries, with task-type colours, keyboard labels, reduced-motion handling and responsive 375px layouts.
@@ -14,7 +22,7 @@ Release: code commit `f17e6c4` was pushed to `main` and deployed as Worker versi
 
 **Team attendance & work** now renders each Admin/Employee name in bold/highlighted styling with the saved profile photo, or safe initials when no photo exists. Inbox sender names are interactive on hover, keyboard focus and click/tap; a signed-in recipient can preview the sender's saved photo and safe work profile only when that sender actually delivered one of the recipient's notifications. Hidden unrelated Admins, private contact fields and message content are not exposed.
 
-Login duration now stops at **19:00 IST**. Task working time is calculated Monday–Saturday in **10:00–13:00 and 14:00–19:00** windows, excluding lunch, Sundays and approved absences. Live attendance fields clear at the 19:00 cutoff; historical report totals retain their saved daily records. Existing profile-sender authorization, notification privacy and session rules are unchanged.
+Login duration now stops at **19:00 IST**. Task working time is calculated Monday–Saturday in **10:00–13:00 and 14:00–19:00** windows, excluding lunch, Sundays and approved absences. Daily updates use the same **19:00 IST business-day close**: an 11:00 submission remains pending/on-time, and an unsubmitted update becomes overdue at 19:00 unless an approved absence or lifecycle/Sunday exemption applies. Live attendance fields clear at the 19:00 cutoff; historical report totals retain their saved daily records. Existing profile-sender authorization, notification privacy and session rules are unchanged.
 
 Verification for this combined change: Node 22 `npm test` passed **165 tests**, lint, formatting, `npm run portal:build`, marketing browser checks, portal browser checks and `git diff --check` passed. The SQLite-backed integration suite ran under Node 22; the portal browser suite used isolated local D1 and synthetic accounts. Deployment and the final read-only production verification receipt are recorded in the release line below after publishing.
 

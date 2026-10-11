@@ -733,3 +733,89 @@
     transition: none;
   }
 }
+
+/* Keep the avatar/name row compact on phones. The name wrapper previously
+   retained a 150px flex-basis while its parent switched to a column, which
+   created the large blank block above the completion count. */
+@media (max-width: 540px) {
+  .employee-label {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 3px;
+  }
+
+  .employee-label > span:not(.employee-avatar) {
+    flex: 0 1 auto;
+    flex-basis: auto;
+    min-width: 0;
+  }
+
+  .employee-label > strong {
+    grid-column: 1 / -1;
+    white-space: normal;
+  }
+}
+
+html[data-portal-theme='dark'] .employee-label .employee-name {
+  color: #ff9b89;
+}
+
+html[data-portal-theme='dark'] .employee-label .team-member-role {
+  color: var(--muted);
+}
+
+html[data-portal-theme='dark'] .chart-kicker {
+  color: #ff9b89;
+}
+
+html[data-portal-theme='dark'] .employee-label .employee-avatar {
+  background: #4a2925;
+  color: #ffb0a0;
+}
+
+html[data-portal-theme='dark'] .analytics-summary {
+  border-color: #70483f;
+  background:
+    radial-gradient(circle at 100% 0, rgb(227 107 90 / 18%), transparent 42%),
+    linear-gradient(135deg, #302522, var(--surface));
+}
+
+html[data-portal-theme='dark'] .analytics-summary-metric {
+  border-color: rgb(227 107 90 / 25%);
+  background: rgb(63 53 48 / 88%);
+}
+
+html[data-portal-theme='dark'] .analytics-trends,
+html[data-portal-theme='dark'] .historical-section {
+  background: var(--surface);
+}
+
+html[data-portal-theme='dark'] .event-bar-track {
+  background: #4a443e;
+}
+
+html[data-portal-theme='dark'] .current-pipeline {
+  background: #252321;
+}
+
+html[data-portal-theme='dark'] .historical-completed {
+  background: #214333;
+  color: #b9e8d0;
+}
+
+html[data-portal-theme='dark'] .historical-approved {
+  background: #392d4b;
+  color: #e1d4f3;
+}
+
+html[data-portal-theme='dark'] .progress-segment:hover::after,
+html[data-portal-theme='dark'] .progress-segment:focus-visible::after {
+  background: #100f0e;
+  color: #fff8f3;
+}
+
+html[data-portal-theme='dark'] .chart-data {
+  border-color: var(--line);
+}
