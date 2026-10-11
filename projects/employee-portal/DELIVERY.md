@@ -8,6 +8,8 @@ The portal now has a persisted light/dark theme switch scoped to the Employee Po
 
 Verification: Node 22 `npm test` passed **168 tests**; lint, formatting, portal build, marketing browser checks, portal browser checks (including dark-theme accessibility), deployment preview and `git diff --check` passed. The browser suite used synthetic local D1 data; no production records were changed.
 
+Release: code commit `bea9fe1` was pushed to `main` and deployed as Worker version `c73a81cd-61ac-4739-9dd0-126dcb60341b`. Both production origins passed read-only exact-build, service-worker, manifest/icon and security verification. Reload `/portal/` once to load the new Overview metric, theme switch, icon controls and compact mobile Analytics layout.
+
 ## Analytics dashboard and Admin availability requests
 
 Analytics now uses a dashboard-style presentation instead of one dense mixed timeline. The report starts with current-work KPIs for **Created**, **Done**, **Open** and **Completion rate**, followed by separate accessible **Completed over time** and **Approved over time** bar charts. Current assignment cohorts are shown in a dedicated **Current work pipeline**, while first-transition history is separated into a **Historical event timeline**. Exact-value tables remain available below the visual summaries, with task-type colours, keyboard labels, reduced-motion handling and responsive 375px layouts.
