@@ -137,7 +137,7 @@ test('empty and legacy payloads render without false colors or injection', () =>
     employeeChart([{ name: 'A', assigned: 1, inProgress: 0, completed: 1, approved: 0 }]),
     /assignment-slot task-type-other filled/,
   )
-  assert.match(trendChart([{ date: '2026-10-05', completed: 1, approved: 0 }]), /progress-segment task-type-other/)
+  assert.match(trendChart([{ date: '2026-10-05', completed: 1, approved: 0 }]), /event-bar-fill completed/)
   assert.doesNotMatch(trendChart([{ date: '<svg onload=alert(1)>', completed: 1, approved: 0 }]), /<svg/)
 })
 
@@ -199,10 +199,10 @@ test('event zero values have no coloured segment and category totals have a read
       },
     ],
   )
-  assert.equal((html.match(/class="progress-segment /g) || []).length, 2)
-  assert.match(html, /aria-label="2026-10-06: 2 first Completed events"/)
-  assert.match(html, /aria-label="2026-10-06: 0 first Approved events"/)
-  assert.match(html, /width:0%/)
+  assert.equal((html.match(/class="event-bar-fill /g) || []).length, 2)
+  assert.match(html, /aria-label="2026-10-06: 2 Completed events;/)
+  assert.match(html, /aria-label="2026-10-06: 0 Approved events;/)
+  assert.match(html, /--bar-size:0%/)
   assert.match(html, /Video Editing: 1 · Canva Poster: 1/)
 })
 
@@ -265,6 +265,6 @@ test('creation cohorts obey business dates and current-state filters while event
   )
   assert.deepEqual(assignedOnly.trend, [])
   const html = trendChart(assignedOnly.trend, assignedOnly.trendBreakdown, assignedOnly.assignmentTrend)
-  assert.match(html, /0\/1 complete · 0%/)
+  assert.match(html, /Video Editing 0\/1 complete/)
   assert.match(html, /progress-open/)
 })

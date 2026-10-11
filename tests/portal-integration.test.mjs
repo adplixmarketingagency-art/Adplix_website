@@ -278,6 +278,27 @@ test(
           reason: 'Synthetic permission',
         })
         await action(account, { type: 'absence.decide', id: saved().absences.at(-1).id, status: 'Rejected' })
+        const notificationCountBeforeAdminRequests = saved().notifications.length
+        await action(account, {
+          type: 'absence.request',
+          kind: 'leave',
+          start: today,
+          end: today,
+          reason: 'Synthetic private Admin leave reason',
+        })
+        const adminLeaveId = saved().absences.at(-1).id
+        assert.equal(saved().absences.at(-1).employeeId, 'admin')
+        assert.equal(saved().notifications.length, notificationCountBeforeAdminRequests)
+        await action(account, { type: 'absence.decide', id: adminLeaveId, status: 'Approved' }, 409)
+        await action(account, {
+          type: 'absence.request',
+          kind: 'permission',
+          start: `${today}T15:00:00+05:30`,
+          end: `${today}T16:00:00+05:30`,
+          reason: 'Synthetic private Admin permission reason',
+        })
+        assert.equal(saved().absences.at(-1).employeeId, 'admin')
+        assert.equal(saved().notifications.length, notificationCountBeforeAdminRequests)
         await action(employee, { type: 'update.submit', text: 'Synthetic daily progress' })
         const original = saved().updates[0].submittedAt
         await action(employee, { type: 'update.submit', text: 'Edited synthetic progress' })

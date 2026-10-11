@@ -1,5 +1,13 @@
 # Employee Portal — Delivery and Setup
 
+## Analytics dashboard and Admin availability requests
+
+Analytics now uses a dashboard-style presentation instead of one dense mixed timeline. The report starts with current-work KPIs for **Created**, **Done**, **Open** and **Completion rate**, followed by separate accessible **Completed over time** and **Approved over time** bar charts. Current assignment cohorts are shown in a dedicated **Current work pipeline**, while first-transition history is separated into a **Historical event timeline**. Exact-value tables remain available below the visual summaries, with task-type colours, keyboard labels, reduced-motion handling and responsive 375px layouts.
+
+Admins can submit the same full-day leave and hourly permission requests as Employees from **Time off & permissions**. Another active Admin must review an Admin request; the requester cannot approve or reject their own request. Reviewer alerts exclude the requester and never go to Employees. Private reasons and decision notes remain portal-only, while Inbox/device alerts use fixed workflow copy.
+
+Verification for this release: Node 22 `npm test` passed **168 tests**, lint, formatting, portal build, the full portal browser delivery check (including Admin request forms, second-Admin approval, chart redesign, desktop/mobile accessibility and CSP), and `git diff --check` passed. No production account, leave request, notification or database record was created during verification.
+
 ## Team identity previews and 19:00 IST workday close
 
 **Team attendance & work** now renders each Admin/Employee name in bold/highlighted styling with the saved profile photo, or safe initials when no photo exists. Inbox sender names are interactive on hover, keyboard focus and click/tap; a signed-in recipient can preview the sender's saved photo and safe work profile only when that sender actually delivered one of the recipient's notifications. Hidden unrelated Admins, private contact fields and message content are not exposed.
@@ -271,6 +279,12 @@ Actual checks with the installed Node **22.23.3** runtime:
 - The workspace Vite preview was restarted after stale development module-resolution errors; Chromium verified both `/` and `/portal/` at http://localhost:3000/. No global Node setting was changed.
 
 No commit, push, production migration, account provisioning, or deployment was performed. The next production step remains the explicit D1/Worker routing and first-Admin setup described above; local test success is not evidence of a production launch.
+
+## Admin leave and permission requests
+
+Admins can submit the same full-day leave and hourly permission forms as Employees from **Time off & permissions**. A request remains Pending until another active Admin reviews it; the requester cannot approve or reject their own request. Admin requests notify only the other active Admins, excluding the requester. Employee routing is unchanged: active Admins receive reviewer alerts, while Employees never receive reviewer alerts. If the requester is the only active Admin, the request is still stored but no reviewer notification is created.
+
+Reasons and decision notes are private portal fields. Inbox summaries and optional browser push use the existing fixed `leave-requested`, `permission-requested`, approval and rejection kinds, without including either private field. Focused API and SQLite integration checks pass for Admin submission, validation, role/privacy routing, self-decision denial and review by another Admin. The full portal browser delivery check also passes the Admin forms, guidance, privacy, self-denial and second-Admin approval flow.
 
 ## Local API process restored — 8 October 2026
 

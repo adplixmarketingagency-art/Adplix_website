@@ -42,11 +42,12 @@ test('renders real dotted open cohorts and escaped hover/focus details for each 
       },
     ],
   )
+  assert.match(trend, /Current work pipeline/)
   assert.match(trend, /progress-segment task-type-video-editing progress-open/)
   assert.match(trend, /Video Editing — 1 open \(Assigned\)/)
-  assert.match(trend, /Video Editing — 1 completed first event/)
-  assert.match(trend, /tabindex="0" aria-label="Video Editing/)
-  assert.match(trend, /1\/2 complete · 50%/)
+  assert.match(trend, /event-bar-fill completed/)
+  assert.match(trend, /tabindex="0" aria-label="2026-10-01: 1 Completed events/)
+  assert.match(trend, /Video Editing 1\/2 complete/)
 })
 
 test('aligns current creation cohorts and historical first events in one date list without combining totals', () => {
@@ -67,32 +68,19 @@ test('aligns current creation cohorts and historical first events in one date li
       { date: '2026-10-02', total: 1, assigned: 0, inProgress: 0, completed: 1, approved: 0 },
     ],
   )
-  assert.equal((html.match(/<section class="progress-section"/g) || []).length, 1)
-  assert.equal((html.match(/class="progress-list"/g) || []).length, 1)
-  const list = html.split('<div class="progress-list"')[1]?.split('<details class="chart-data">')[0]
-  assert.ok(list)
-  assert.equal((list.match(/class="progress-date"/g) || []).length, 3)
-  assert.equal((list.match(/class="progress-label">Current tasks/g) || []).length, 2)
-  assert.equal((list.match(/class="progress-label">First Completed/g) || []).length, 2)
-  assert.deepEqual(
-    [...list.matchAll(/<time>(.*?)<\/time>/g)].map((match) => match[1]),
-    ['2026-10-01', '2026-10-02', '2026-10-03'],
-  )
-  assert.match(list, /Current tasks<\/span>/)
-  assert.match(list, /First Completed<\/span>/)
-  assert.match(list, /First Approved<\/span>/)
-  assert.match(list, /2026-10-02: current assignment-date progress, 1 completed or approved, 0 open of 1/)
-  assert.match(list, /2026-10-02: 3 first Completed events/)
-  assert.match(list, /Current state: 1\/1 complete · 100%/)
-  assert.match(html, /<strong>3<\/strong> tasks created/)
-  assert.match(
-    html,
-    /Event counts are not a distinct-task total or assigned capacity and are not added to current task counts/,
-  )
-  assert.match(html, /View assignment-date counts/)
-  assert.match(html, /View event-date counts/)
-  assert.match(html, /Shooting \/ Production — 3 completed first event/)
-  assert.match(html, /Bar lengths use separate scales for current tasks and first events/)
+  assert.equal((html.match(/<section class="progress-section/g) || []).length, 4)
+  assert.equal((html.match(/class="pipeline-cohort"/g) || []).length, 2)
+  assert.equal((html.match(/class="historical-event"/g) || []).length, 2)
+  assert.match(html, /<h3 id="current-pipeline-title">Current work pipeline<\/h3>/)
+  assert.match(html, /<h3 id="historical-events-title">Historical event timeline<\/h3>/)
+  assert.match(html, /Created<\/span><strong>3<\/strong>/)
+  assert.match(html, /Done<\/span><strong>1<\/strong>/)
+  assert.match(html, /Completion rate<\/span><strong>33%<\/strong>/)
+  assert.match(html, /Event counts are not distinct-task totals and are never added to created, done, or open/)
+  assert.match(html, /View current pipeline table/)
+  assert.match(html, /View historical event table/)
+  assert.match(html, /Completed by type: Shooting \/ Production: 3/)
+  assert.match(html, /Completed over time \+ Approved over time/)
   assert.match(html, /First completion and approval events by date and task type/)
 })
 
@@ -188,8 +176,8 @@ test('pending-only cohorts render without events; historical cohorts are not inv
       },
     ],
   )
-  assert.match(html, /0\/2 complete · 0%/)
-  assert.match(html, /<strong>2<\/strong> currently open/)
+  assert.match(html, /<span>Open<\/span><strong>2<\/strong>/)
+  assert.match(html, /Completion rate<\/span><strong>0%<\/strong>/)
   assert.equal((html.match(/class="progress-segment /g) || []).length, 2)
   assert.match(html, /No first completion or approval events in this range/)
   assert.doesNotMatch(html, /progress-filled/)
@@ -197,9 +185,9 @@ test('pending-only cohorts render without events; historical cohorts are not inv
 
 test('event-only ranges do not show fabricated cohort counts, and escape all visible and hover text', () => {
   const html = trendChart([{ date: '<svg onload=bad()>', completed: 1, approved: 1 }], [], [])
-  assert.match(html, /No tasks created in this range/)
-  assert.match(html, /<strong>0<\/strong> tasks created/)
-  assert.match(html, /Other — 1 completed first event/)
+  assert.match(html, /No current assignment cohorts in this range/)
+  assert.match(html, /<span>Created<\/span><strong>0<\/strong>/)
+  assert.match(html, /event-bar-fill completed/)
   assert.doesNotMatch(html, /<svg/)
   assert.match(html, /&lt;svg onload=bad\(\)&gt;/)
   assert.doesNotMatch(html, /progress-open/)
@@ -207,10 +195,10 @@ test('event-only ranges do not show fabricated cohort counts, and escape all vis
 
 test('empty date range renders one combined empty state and keeps both count tables accurate', () => {
   const html = trendChart([], [], [])
-  assert.equal((html.match(/<section class="progress-section"/g) || []).length, 1)
-  assert.doesNotMatch(html, /class="progress-list"/)
-  assert.match(html, /No tasks created or first completion or approval events in this range/)
-  assert.match(html, /colspan="7">No tasks created in this range/)
+  assert.equal((html.match(/<section class="progress-section/g) || []).length, 4)
+  assert.doesNotMatch(html, /class="pipeline-list"/)
+  assert.match(html, /No completion or approval events in this range/)
+  assert.match(html, /colspan="7">No current assignment cohorts in this range/)
   assert.match(html, /colspan="5">No first completion or approval events in this range/)
 })
 
@@ -230,7 +218,7 @@ test('long cohort counts render bounded segment count, with honest state percent
       },
     ],
   )
-  assert.match(html, /50001\/100000 complete · 50%/)
+  assert.match(html, /Other 50001\/100000 complete/)
   assert.equal((html.match(/class="progress-segment /g) || []).length, 3)
   assert.match(html, /Other — 49999 open \(Assigned\)/)
 })

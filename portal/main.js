@@ -538,6 +538,9 @@ function tasks(teamView) {
 }
 function requests() {
   const s = state.snapshot
+  const requestGuidance = admin()
+    ? '<p class="muted">Another active Admin must review your request. Your reason and any decision note stay inside the portal.</p>'
+    : ''
   return `<div class="page-heading"><div><p class="eyebrow">Availability</p><h1>Time off & permissions</h1></div></div><div class="grid"><div>${section(
     'Requests',
     arr(s.absences)
@@ -546,10 +549,10 @@ function requests() {
           `<div class="list-item"><div class="split"><strong>${esc(a.kind === 'leave' ? 'Leave' : 'Hourly permission')} · ${personName(
             arr(s.employees).find((e) => e.id === a.employeeId),
             'You',
-          )}</strong>${statusTag(a.status)}</div><p>${esc(a.kind === 'leave' ? `${a.start} — ${a.end}` : `${fmtDateTime(a.start)} — ${fmtDateTime(a.end)}`)}</p><p>${esc(a.reason)}</p>${a.decisionNote ? `<p class="muted">Decision: ${esc(a.decisionNote)}</p>` : ''}${admin() && a.status === 'Pending' ? `<div class="actions">${btn('Approve', 'absence-approve', a.id, 'small primary')}${btn('Reject', 'absence-reject', a.id, 'small')}</div>` : ''}</div>`,
+          )}</strong>${statusTag(a.status)}</div><p>${esc(a.kind === 'leave' ? `${a.start} — ${a.end}` : `${fmtDateTime(a.start)} — ${fmtDateTime(a.end)}`)}</p><p>${esc(a.reason)}</p>${a.decisionNote ? `<p class="muted">Decision: ${esc(a.decisionNote)}</p>` : ''}${admin() && a.status === 'Pending' && a.employeeId !== state.user.id ? `<div class="actions">${btn('Approve', 'absence-approve', a.id, 'small primary')}${btn('Reject', 'absence-reject', a.id, 'small')}</div>` : ''}${admin() && a.status === 'Pending' && a.employeeId === state.user.id ? '<p class="fine">Another active Admin must review this request.</p>' : ''}</div>`,
       )
       .join('') || empty('No requests yet.'),
-  )}</div><div>${!admin() ? section('Request leave', `<form data-form="absence-leave">${input('start', 'First day', 'date', '', 'required')}${input('end', 'Last day', 'date', '', 'required')}${area('reason', 'Reason', '', 'required rows="3"')}<button class="primary" type="submit">Send leave request</button></form>`) + section('Request hourly permission', `<form data-form="absence-permission">${input('date', 'Date', 'date', '', 'required')}${input('startTime', 'From', 'time', '', 'required')}${input('endTime', 'To', 'time', '', 'required')}${area('reason', 'Reason', '', 'required rows="3"')}<button class="primary" type="submit">Send permission request</button></form>`) : section('Decisions', '<p class="muted">Approvals update eligible task working time. Deadlines change only when adjusted explicitly.</p>')}</div></div>`
+  )}</div><div>${section('Request leave', `${requestGuidance}<form data-form="absence-leave">${input('start', 'First day', 'date', '', 'required')}${input('end', 'Last day', 'date', '', 'required')}${area('reason', 'Reason', '', 'required rows="3"')}<button class="primary" type="submit">Send leave request</button></form>`) + section('Request hourly permission', `${requestGuidance}<form data-form="absence-permission">${input('date', 'Date', 'date', '', 'required')}${input('startTime', 'From', 'time', '', 'required')}${input('endTime', 'To', 'time', '', 'required')}${area('reason', 'Reason', '', 'required rows="3"')}<button class="primary" type="submit">Send permission request</button></form>`) + (admin() ? section('Decisions', '<p class="muted">Approvals update eligible task working time. Deadlines change only when adjusted explicitly.</p>') : '')}</div></div>`
 }
 function notifications() {
   const list = arr(state.snapshot.notifications)

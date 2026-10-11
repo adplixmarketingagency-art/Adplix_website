@@ -850,7 +850,7 @@ async function action(db, actorId, credentialVersion, a, env) {
         break
       }
       case 'absence.request': {
-        if (actor.role !== 'Employee') fail('Not permitted.', 403)
+        if (!['Admin', 'Employee'].includes(actor.role)) fail('Not permitted.', 403)
         const kind = a.kind
         if (!['leave', 'permission'].includes(kind)) fail('Invalid absence kind.')
         const start = kind === 'leave' ? date(a.start) : timestamp(a.start),
@@ -873,7 +873,9 @@ async function action(db, actorId, credentialVersion, a, env) {
           decidedAt: null,
           decisionNote: '',
         })
-        for (const recipient of s.users.filter((x) => x.active && x.role === 'Admin'))
+        for (const recipient of s.users.filter(
+          (x) => x.active && x.role === 'Admin' && (actor.role !== 'Admin' || x.id !== actor.id),
+        ))
           notify(
             s,
             recipient.id,
@@ -900,7 +902,7 @@ async function action(db, actorId, credentialVersion, a, env) {
           s,
           item.employeeId,
           `Your ${item.kind} request ${a.status.toLowerCase()}`,
-          item.decisionNote || 'Your request has been reviewed.',
+          'Your request has been reviewed. Open Time off to view the decision.',
           { kind: `${item.kind}-${a.status.toLowerCase()}`, senderId: actor.id },
         )
         subjectId = item.id

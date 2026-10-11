@@ -471,6 +471,8 @@ test('leave and permission workflow alerts reach only active role owners and use
     assert.deepEqual(Object.keys(payload).sort(), ['body', 'kind', 'title'])
     assert.equal(JSON.stringify(payload).includes('PRIVATE_ABSENCE_REASON'), false)
     assert.equal(JSON.stringify(payload).includes('PRIVATE_DECISION_NOTE'), false)
+    assert.equal(JSON.stringify(payload).includes('PRIVATE_ADMIN_REASON'), false)
+    assert.equal(JSON.stringify(payload).includes('PRIVATE_ADMIN_PERMISSION_REASON'), false)
     outbound.push({ url, payload })
     return { ok: true, status: 201 }
   }
@@ -523,11 +525,90 @@ test('leave and permission workflow alerts reach only active role owners and use
       )
       assert.equal(f.state.notifications.at(-1).title, `Your ${kind} request ${status.toLowerCase()}`)
       assert.equal(f.state.notifications.at(-1).senderId, 'admin')
+      assert.equal(f.state.absences.find((item) => item.id === absence.id).decisionNote, 'PRIVATE_DECISION_NOTE')
+      assert.equal(JSON.stringify(f.state.notifications).includes('PRIVATE_DECISION_NOTE'), false)
       const notificationCount = f.state.notifications.length
       assert.equal((await send('admin', { type: 'absence.decide', id: absence.id, status })).status, 409)
       assert.equal(f.state.notifications.length, notificationCount)
       assert.deepEqual(outbound, [])
     }
+    const adminRequest = {
+      type: 'absence.request',
+      kind: 'leave',
+      start: '2026-10-20',
+      end: '2026-10-20',
+      reason: 'PRIVATE_ADMIN_REASON',
+    }
+    assert.equal((await send('admin', adminRequest)).status, 200)
+    const adminLeave = f.state.absences.at(-1)
+    assert.equal(adminLeave.employeeId, 'admin')
+    assert.deepEqual(
+      outbound.splice(0).map((item) => [item.url, item.payload.kind]),
+      [[device(keys.keys, 'admin2').endpoint, 'leave-requested']],
+    )
+    assert.equal(f.state.notifications.at(-1).employeeId, 'admin2')
+    assert.equal(f.state.notifications.at(-1).text.includes('PRIVATE_ADMIN_REASON'), false)
+    assert.equal((await send('admin', { type: 'absence.decide', id: adminLeave.id, status: 'Approved' })).status, 409)
+    assert.deepEqual(outbound, [])
+    assert.equal(f.state.absences.find((item) => item.id === adminLeave.id).status, 'Pending')
+    assert.equal((await send('admin2', { type: 'absence.decide', id: adminLeave.id, status: 'Approved' })).status, 200)
+    assert.deepEqual(
+      outbound.splice(0).map((item) => [item.url, item.payload.kind]),
+      [[device(keys.keys, 'admin').endpoint, 'leave-approved']],
+    )
+    const adminPermission = {
+      type: 'absence.request',
+      kind: 'permission',
+      start: '2026-10-21T07:00:00Z',
+      end: '2026-10-21T08:00:00Z',
+      reason: 'PRIVATE_ADMIN_PERMISSION_REASON',
+    }
+    assert.equal((await send('admin', adminPermission)).status, 200)
+    const adminPermissionItem = f.state.absences.at(-1)
+    assert.equal(adminPermissionItem.employeeId, 'admin')
+    assert.deepEqual(
+      outbound.splice(0).map((item) => [item.url, item.payload.kind]),
+      [[device(keys.keys, 'admin2').endpoint, 'permission-requested']],
+    )
+    for (const status of ['Approved', 'Rejected']) {
+      assert.equal((await send('admin', { type: 'absence.decide', id: adminPermissionItem.id, status })).status, 409)
+      assert.equal((await send('employee', { type: 'absence.decide', id: adminPermissionItem.id, status })).status, 403)
+      assert.deepEqual(outbound, [])
+    }
+    assert.equal(
+      (
+        await send('admin2', {
+          type: 'absence.decide',
+          id: adminPermissionItem.id,
+          status: 'Rejected',
+          decisionNote: 'PRIVATE_DECISION_NOTE',
+        })
+      ).status,
+      200,
+    )
+    assert.deepEqual(
+      outbound.splice(0).map((item) => [item.url, item.payload.kind]),
+      [[device(keys.keys, 'admin').endpoint, 'permission-rejected']],
+    )
+    assert.equal(JSON.stringify(f.state.notifications).includes('PRIVATE_DECISION_NOTE'), false)
+    assert.equal(
+      f.state.notifications.some(
+        (n) => n.employeeId === 'employee' && n.text.includes('PRIVATE_ADMIN_PERMISSION_REASON'),
+      ),
+      false,
+    )
+    assert.equal(
+      (
+        await send('admin', {
+          type: 'absence.request',
+          kind: 'permission',
+          start: '2026-10-21T07:00:00Z',
+          end: '2026-10-22T08:00:00Z',
+          reason: 'bad interval',
+        })
+      ).status,
+      400,
+    )
     assert.deepEqual(
       f.state.notifications.filter((n) => n.employeeId === 'disabled'),
       [],
@@ -541,12 +622,17 @@ test('leave and permission workflow alerts reach only active role owners and use
       ['leave-approved', 'leave-rejected', 'permission-approved', 'permission-rejected'],
     )
     const adminInbox = (await (await callWith(f, 'snapshot', 'GET', credentials.get('admin'))).json()).notifications
+    const employeeReviewerAlerts = adminInbox.filter((n) => n.sender?.id === 'employee')
     assert.deepEqual(
-      adminInbox.map((n) => n.kind),
+      employeeReviewerAlerts.map((n) => n.kind),
       ['leave-requested', 'leave-requested', 'permission-requested', 'permission-requested'],
     )
-    assert.ok(adminInbox.every((n) => n.sender?.id === 'employee' && n.readAt === null))
-    const first = adminInbox[0].id
+    assert.ok(employeeReviewerAlerts.every((n) => n.readAt === null))
+    assert.ok(adminInbox.some((n) => n.kind === 'leave-approved' && n.sender?.id === 'admin2'))
+    assert.ok(adminInbox.some((n) => n.kind === 'permission-rejected' && n.sender?.id === 'admin2'))
+    const admin2Inbox = (await (await callWith(f, 'snapshot', 'GET', credentials.get('admin2'))).json()).notifications
+    assert.ok(admin2Inbox.some((n) => n.kind === 'permission-requested' && n.sender?.id === 'admin'))
+    const first = employeeReviewerAlerts[0].id
     assert.equal((await send('admin2', { type: 'notification.read', id: first })).status, 404)
     assert.equal((await send('other', { type: 'notification.read', id: first })).status, 404)
     assert.equal((await send('admin', { type: 'notification.read', id: first })).status, 200)
@@ -558,6 +644,111 @@ test('leave and permission workflow alerts reach only active role owners and use
     assert.deepEqual(outbound, [])
   } finally {
     globalThis.fetch = originalFetch
+  }
+})
+
+test('an only active Admin can submit an absence without creating a reviewer alert', async () => {
+  const admin = { id: 'admin', role: 'Admin', name: 'Only Admin', active: true, credentialVersion: 0 }
+  const f = fixture([
+    admin,
+    { id: 'inactive-admin', role: 'Admin', active: false },
+    { id: 'employee', role: 'Employee', active: true },
+  ])
+  const headers = asUser(f, admin)
+  for (const request of [
+    { kind: 'permission', start: '2026-10-21T07:00:00Z', end: '2026-10-21T08:00:00Z' },
+    { kind: 'leave', start: '2026-10-21', end: '2026-10-21' },
+  ]) {
+    const response = await callWith(f, 'actions', 'POST', headers, {
+      type: 'absence.request',
+      ...request,
+      reason: 'Private reason',
+    })
+    assert.equal(response.status, 200)
+    assert.equal(f.state.absences.at(-1).status, 'Pending')
+    assert.equal(
+      (
+        await callWith(f, 'actions', 'POST', headers, {
+          type: 'absence.decide',
+          id: f.state.absences.at(-1).id,
+          status: 'Approved',
+        })
+      ).status,
+      409,
+    )
+  }
+  assert.equal(f.state.absences.length, 2)
+  assert.deepEqual(f.state.notifications, [])
+})
+
+test('Admin and Employee absence requests share validation and cannot spoof the requester or pre-approve', async () => {
+  for (const role of ['Admin', 'Employee']) {
+    const actor = { id: 'requester', role, active: true, credentialVersion: 0 }
+    const f = fixture([actor, { id: 'reviewer', role: 'Admin', active: true }])
+    const headers = asUser(f, actor)
+    const send = (payload, requestHeaders = headers) => callWith(f, 'actions', 'POST', requestHeaders, payload)
+    const leave = { type: 'absence.request', kind: 'leave', start: '2026-10-12', end: '2026-10-13', reason: 'Reason' }
+    const permission = {
+      ...leave,
+      kind: 'permission',
+      start: '2026-10-12T10:00:00+05:30',
+      end: '2026-10-12T11:00:00+05:30',
+    }
+    for (const invalid of [
+      { ...leave, kind: 'holiday' },
+      { ...leave, start: '2026-02-30' },
+      { ...leave, end: '2026-02-30' },
+      { ...leave, start: '2026-10-14' },
+      { ...leave, reason: '   ' },
+      { ...leave, reason: 'x'.repeat(1001) },
+      { ...permission, start: '2026-10-12T10:00:00' },
+      { ...permission, end: permission.start },
+      { ...permission, end: '2026-10-12T09:00:00+05:30' },
+      { ...permission, end: '2026-10-13T10:00:00+05:30' },
+      { ...permission, start: '2026-10-12T18:00:00Z', end: '2026-10-12T19:00:00Z' },
+      { ...permission, reason: null },
+    ]) {
+      const before = JSON.stringify(f.state)
+      assert.equal((await send(invalid)).status, 400, `${role}: invalid request`)
+      assert.equal(JSON.stringify(f.state), before, 'Validation failures must not persist rows or alerts')
+    }
+    assert.equal((await send(leave, { ...headers, 'X-CSRF-Token': '' })).status, 403)
+    assert.equal((await send(leave, { ...headers, Origin: 'https://other.test' })).status, 403)
+    for (const request of [leave, permission]) {
+      assert.equal(
+        (await send({ ...request, employeeId: 'reviewer', status: 'Approved', reason: '  Own reason  ' })).status,
+        200,
+      )
+      const item = f.state.absences.at(-1)
+      assert.equal(item.employeeId, actor.id)
+      assert.equal(item.status, 'Pending')
+      assert.equal(item.reason, 'Own reason')
+      assert.equal(item.decidedAt, null)
+    }
+    const snapshot = await (await callWith(f, 'snapshot', 'GET', headers)).json()
+    assert.equal(snapshot.absences.length, 2)
+    assert.equal(snapshot.absences[1].start, '2026-10-12T04:30:00.000Z')
+    assert.equal(snapshot.absences[1].end, '2026-10-12T05:30:00.000Z')
+  }
+})
+
+test('absence requests and decisions keep active-session, password-rotation and role gates', async () => {
+  for (const [fields, expected] of [
+    [{ role: 'Guest', active: true }, 403],
+    [{ role: 'Admin', active: false }, 401],
+    [{ role: 'Admin', active: true, mustChangePassword: true }, 403],
+  ]) {
+    const actor = { id: 'actor', credentialVersion: 0, ...fields }
+    const f = fixture([actor])
+    const headers = asUser(f, actor)
+    for (const payload of [
+      { type: 'absence.request', kind: 'leave', start: '2026-10-12', end: '2026-10-12', reason: 'Private' },
+      { type: 'absence.decide', id: 'pending', status: 'Approved' },
+    ]) {
+      assert.equal((await callWith(f, 'actions', 'POST', headers, payload)).status, expected)
+      assert.deepEqual(f.state.absences, [])
+      assert.deepEqual(f.state.notifications, [])
+    }
   }
 })
 

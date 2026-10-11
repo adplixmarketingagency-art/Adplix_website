@@ -440,6 +440,87 @@ try {
   track(employeePage)
   await login(employeePage, 'editor@example.test', true)
   await expect(employeePage.getByRole('link', { name: 'Team', exact: true })).toHaveCount(0)
+  await navigate(opsPage, 'Time off')
+  await expect(opsPage.locator('[data-form="absence-leave"]')).toBeVisible()
+  await expect(opsPage.locator('[data-form="absence-permission"]')).toBeVisible()
+  await expect(opsPage.getByText('Another active Admin must review your request.', { exact: false })).toHaveCount(2)
+  const adminLeaveDate = businessDate(Date.now() + 2 * 86400000)
+  const adminLeaveForm = opsPage.locator('[data-form="absence-leave"]')
+  await adminLeaveForm.getByLabel('First day').fill(adminLeaveDate)
+  await adminLeaveForm.getByLabel('Last day').fill(adminLeaveDate)
+  await adminLeaveForm.getByLabel('Reason', { exact: true }).fill('Private Admin leave reason')
+  await submit(adminLeaveForm, 'Send leave request')
+  await saved(opsPage)
+  const adminPermissionForm = opsPage.locator('[data-form="absence-permission"]')
+  await adminPermissionForm.getByLabel('Date', { exact: true }).fill(businessDate())
+  await adminPermissionForm.getByLabel('From', { exact: true }).fill('10:30')
+  await adminPermissionForm.getByLabel('To', { exact: true }).fill('11:30')
+  await adminPermissionForm.getByLabel('Reason', { exact: true }).fill('Private Admin permission reason')
+  await submit(adminPermissionForm, 'Send permission request')
+  await saved(opsPage)
+  for (const reason of ['Private Admin leave reason', 'Private Admin permission reason']) {
+    const row = opsPage.locator('.list-item').filter({ hasText: reason })
+    await expect(row.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
+    await expect(row.getByRole('button', { name: 'Reject', exact: true })).toHaveCount(0)
+    await expect(row).toContainText('Another active Admin must review this request.')
+  }
+  const opsSnapshotAfterRequest = await (await opsPage.request.get(base + '/api/portal/snapshot')).json()
+  assert.equal(
+    opsSnapshotAfterRequest.notifications.filter((n) => ['leave-requested', 'permission-requested'].includes(n.kind))
+      .length,
+    0,
+    'Admin requesters do not receive reviewer alerts for their own requests',
+  )
+  const adminSnapshotAfterRequest = await (await adminPage.request.get(base + '/api/portal/snapshot')).json()
+  assert.deepEqual(
+    adminSnapshotAfterRequest.notifications
+      .filter((n) => ['leave-requested', 'permission-requested'].includes(n.kind))
+      .map((n) => n.kind),
+    ['leave-requested', 'permission-requested'],
+  )
+  const adminRequestIds = opsSnapshotAfterRequest.absences
+    .filter((item) => item.employeeId === opsSnapshotAfterRequest.user.id)
+    .map((item) => item.id)
+  assert.equal(adminRequestIds.length, 2)
+  const opsSession = await (await opsPage.request.get(base + '/api/portal/session')).json()
+  const selfDecision = await opsPage.request.post(base + '/api/portal/actions', {
+    headers: { Origin: base, 'X-CSRF-Token': opsSession.csrfToken },
+    data: { type: 'absence.decide', id: adminRequestIds[0], status: 'Approved' },
+  })
+  assert.equal(selfDecision.status(), 409, 'An Admin cannot decide their own request')
+  await navigate(adminPage, 'Time off')
+  await adminPage.getByRole('button', { name: 'Refresh', exact: true }).click()
+  for (const reason of ['Private Admin leave reason', 'Private Admin permission reason']) {
+    const row = adminPage.locator('.list-item').filter({ hasText: reason })
+    await expect(row).toHaveCount(1)
+    await row.getByRole('button', { name: 'Approve', exact: true }).click()
+    const decision = adminPage.locator('[data-form="absence-decision"]')
+    await decision.getByLabel('Decision note (optional)', { exact: true }).fill('Private Admin decision note')
+    await submit(decision, 'Confirm decision')
+    await saved(adminPage)
+  }
+  await navigate(opsPage, 'Inbox')
+  await opsPage.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(opsPage.locator('#inbox-items')).toContainText('Your leave request approved')
+  await expect(opsPage.locator('#inbox-items')).toContainText('Your permission request approved')
+  await expect(opsPage.locator('#inbox-items')).not.toContainText('Private Admin decision note')
+  await expect(opsPage.locator('#inbox-items')).not.toContainText('Private Admin leave reason')
+  await expect(opsPage.locator('#inbox-items')).not.toContainText('Private Admin permission reason')
+  await navigate(opsPage, 'Time off')
+  for (const reason of ['Private Admin leave reason', 'Private Admin permission reason']) {
+    const row = opsPage.locator('.list-item').filter({ hasText: reason })
+    await expect(row).toContainText('Approved')
+    await expect(row).toContainText('Decision: Private Admin decision note')
+  }
+  const employeeSnapshotBeforeRequests = await (await employeePage.request.get(base + '/api/portal/snapshot')).json()
+  assert.equal(employeeSnapshotBeforeRequests.absences.length, 0)
+  assert.equal(
+    employeeSnapshotBeforeRequests.notifications.filter((n) =>
+      ['leave-requested', 'permission-requested'].includes(n.kind),
+    ).length,
+    0,
+    'Employees never receive reviewer alerts for Admin requests',
+  )
   await expect(employeePage.locator('.task-card.overdue')).toHaveCount(3)
   assert.equal(await employeePage.locator('.list-item img').count(), 0, 'Untrusted note HTML must stay text')
   await expect(employeePage.locator('.list-item').filter({ hasText: 'Review the brand brief.' })).toContainText(
@@ -665,33 +746,31 @@ try {
     .first()
     .evaluate((node) => getComputedStyle(node).backgroundColor)
   assert.notEqual(videoFill, canvaFill, 'Video Editing and Canva Poster must use different colours')
-  const progressTimeline = adminPage.getByRole('region', {
-    name: 'Current assignment-date progress and historical first events by date',
-  })
-  await expect(progressTimeline.getByRole('img', { name: /Video Editing — 2 completed first event/ })).toBeVisible()
-  await expect(progressTimeline.getByRole('img', { name: /Video Editing — 1 approved first event/ })).toBeVisible()
+  const completedTimeline = adminPage.getByRole('region', { name: 'Completed over time' })
+  const approvedTimeline = adminPage.getByRole('region', { name: 'Approved over time' })
+  await expect(completedTimeline.getByRole('img', { name: /Video Editing: 2/ })).toBeVisible()
+  await expect(approvedTimeline.getByRole('img', { name: /Video Editing: 1/ })).toBeVisible()
+  const progressTimeline = adminPage.getByRole('region', { name: 'Current work pipeline' })
   assert.equal(
     await progressTimeline
-      .locator('.progress-segment.task-type-video-editing')
+      .locator('.progress-segment.task-type-video-editing.progress-filled')
       .first()
       .evaluate((node) => getComputedStyle(node).backgroundColor),
     videoFill,
   )
   assert.equal(
     await progressTimeline
-      .locator('.progress-segment.task-type-canva-poster')
+      .locator('.progress-segment.task-type-canva-poster.progress-filled')
       .first()
       .evaluate((node) => getComputedStyle(node).backgroundColor),
     canvaFill,
   )
-  await expect(progressTimeline.locator('.progress-segment.task-type-video-editing').first()).toHaveAttribute(
-    'title',
-    /Video Editing/,
-  )
-  await expect(progressTimeline.locator('.progress-segment.task-type-canva-poster').first()).toHaveAttribute(
-    'title',
-    /Canva Poster/,
-  )
+  await expect(
+    progressTimeline.locator('.progress-segment.task-type-video-editing.progress-filled').first(),
+  ).toHaveAttribute('title', /Video Editing/)
+  await expect(
+    progressTimeline.locator('.progress-segment.task-type-canva-poster.progress-filled').first(),
+  ).toHaveAttribute('title', /Canva Poster/)
   await expect(adminPage.locator('.progress-segment.progress-open')).toHaveCount(2)
   await navigate(employeePage, 'Team tasks')
   await expect(employeePage.getByRole('heading', { name: 'Design campaign poster' })).toBeVisible()
@@ -731,8 +810,8 @@ try {
   await saved(employeePage)
   await navigate(adminPage, 'Inbox')
   await adminPage.getByRole('button', { name: 'Refresh', exact: true }).click()
-  await expect(adminPage.locator('#inbox-items .tag').filter({ hasText: /^New leave request$/ })).toHaveCount(1)
-  await expect(adminPage.locator('#inbox-items .tag').filter({ hasText: /^New permission request$/ })).toHaveCount(1)
+  await expect(adminPage.locator('#inbox-items .tag').filter({ hasText: /^New leave request$/ })).toHaveCount(2)
+  await expect(adminPage.locator('#inbox-items .tag').filter({ hasText: /^New permission request$/ })).toHaveCount(2)
   await expect(adminPage.locator('#inbox-items')).toContainText('From Test Editor · Employee')
   await navigate(adminPage, 'Time off')
   await adminPage.getByRole('button', { name: 'Refresh', exact: true }).click()
@@ -838,14 +917,12 @@ try {
   await expect(editorProgress(adminPage).locator('.employee-label strong')).toHaveText('2 of 2 completed (100%)')
   await expect(editorProgress(adminPage).locator('.assignment-slot.task-type-canva-poster')).toHaveCount(0)
   await expect(
-    adminPage
-      .getByRole('region', { name: 'Current assignment-date progress and historical first events by date' })
-      .getByRole('img', { name: /Video Editing — 2 completed first event/ }),
+    adminPage.getByRole('region', { name: 'Completed over time' }).getByRole('img', { name: /Video Editing: 2/ }),
   ).toBeVisible()
   await analyticsFilters.getByLabel('Job function', { exact: true }).selectOption('')
   await analyticsFilters.getByRole('button', { name: 'Apply filters', exact: true }).click()
   await expect(editorProgress(adminPage).locator('.employee-label strong')).toHaveText('3 of 3 completed (100%)')
-  await adminPage.getByText('View assignment-date counts', { exact: true }).click()
+  await adminPage.getByText('View current pipeline table', { exact: true }).click()
   await expect(adminPage.getByRole('cell', { name: /Video Editing: 2\/2 · Canva Poster: 1\/1/ })).toBeVisible()
   await accessibility(adminPage, 'Admin analytics')
   const [download] = await Promise.all([

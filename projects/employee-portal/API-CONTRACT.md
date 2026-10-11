@@ -32,7 +32,7 @@ Admin snapshots additionally contain `registrations:[{id,name,email,status,creat
 - client `{id,name,service,active}`.
 - task `{id,title,description,assigneeId,clientId,jobFunction,deadline,priority,state,createdAt,updatedAt,completedAt,approvedAt,version,intervals:[{start,end:null|string}],events:[{actorId,from,to,at,reason?,kind}],workSeconds,overdue}`. State labels exactly `Assigned`, `In-progress`, `Completed`, `Approved`.
 - update `{id,employeeId,date,text,submittedAt,editedAt}`; Admin sees team updates; Employee sees own.
-- absence `{id,employeeId,kind:'leave'|'permission',start,end,reason,status:'Pending'|'Approved'|'Rejected',createdAt,decidedAt,decisionNote}`. Leave start/end date strings inclusive; permission ISO instants. Employee sees own requests.
+- absence `{id,employeeId,kind:'leave'|'permission',start,end,reason,status:'Pending'|'Approved'|'Rejected',createdAt,decidedAt,decisionNote}`. Leave start/end date strings inclusive; permission ISO instants. Employee sees own requests; Admin sees the review queue and all requests. Reasons and decision notes remain within authorized portal views.
 - note `{id,text,recipientIds:[] (empty = all),authorId,createdAt,author:null|{id,name,role}}`. Visible only to intended recipients and Admin. Author attribution also works for legacy notes; it does not grant access to the author's private profile or contact fields.
 - notification `{id,title,text,kind,createdAt,readAt,sender:null|{id,name,role},taskId?,transitionVersion?}`; own inbox only. `kind` is a whitelisted workflow type, never free-form notification copy. New workflow messages persist sender IDs; legacy rows only infer recognized types and do not invent missing senders. The sidebar count is the number of own notifications with no `readAt`; note alerts count once, not again as separate notes.
 - today business date; updateStatus `{status:'pending'|'overdue'|'on-time'|'late'|'exempt',deadline,submittedAt?}` for logged-in user.
@@ -52,8 +52,8 @@ Admin snapshots additionally contain `registrations:[{id,name,email,status,creat
 - `task.transition` `{id,state,version,reason?}`. Employee own permitted transitions; Admin approval/rejection; rejection Completed→In-progress requires reason. Optimistic version conflict =409.
 - `task.deadline` `{id,deadline,version}`; Admin, audited explicit adjustment.
 - `update.submit` `{text}`; today's record, original submission preserved.
-- `absence.request` `{kind,start,end,reason}`; Employee own request, Pending. Notifies active Admins of a new leave/permission request.
-- `absence.decide` `{id,status:'Approved'|'Rejected',decisionNote}`; Admin only, Pending only. Notifies only the requester with the specific leave/permission approval or rejection.
+- `absence.request` `{kind,start,end,reason}`; Admin or Employee own request, Pending, using the same date/time and reason validation for both roles. Notifies active Admin reviewers of a new leave/permission request; an Admin requester is excluded from the reviewer list, and no reviewer alert is created when no other active Admin remains. Notification summaries and optional push payloads contain only fixed workflow copy, never the reason.
+- `absence.decide` `{id,status:'Approved'|'Rejected',decisionNote}`; active Admin only, Pending only, and an Admin cannot decide their own request. Another active Admin can review it. Notifies only the requester with the specific leave/permission approval or rejection; decision notes remain portal-only.
 - `note.create` `{text,recipientIds:[]}`; Admin sender; recipient IDs may select active Admins and/or Employees, empty means all active team roles. Admin management access to published notes is unchanged.
 - `broadcast.create` `{title,text,recipientIds:[]}`; same active-team recipient rules; each recipient receives their own inbox record and optional device push.
 - `notification.read` `{id}`; own only.
