@@ -8,6 +8,8 @@ Admins can submit the same full-day leave and hourly permission requests as Empl
 
 Verification for this release: Node 22 `npm test` passed **168 tests**, lint, formatting, portal build, the full portal browser delivery check (including Admin request forms, second-Admin approval, chart redesign, desktop/mobile accessibility and CSP), and `git diff --check` passed. No production account, leave request, notification or database record was created during verification.
 
+Release: code commit `f17e6c4` was pushed to `main` and deployed as Worker version `77367a9f-9fac-4e90-877e-1e0cef95928e`. Both `https://withered-pine-ee0b.adplixmarketingagency.workers.dev` and, after brief asset propagation, `https://adplixmedia.in` passed read-only exact-build, service-worker, manifest/icon and security verification. Reload `/portal/` once to load the dashboard redesign and Admin availability forms.
+
 ## Team identity previews and 19:00 IST workday close
 
 **Team attendance & work** now renders each Admin/Employee name in bold/highlighted styling with the saved profile photo, or safe initials when no photo exists. Inbox sender names are interactive on hover, keyboard focus and click/tap; a signed-in recipient can preview the sender's saved photo and safe work profile only when that sender actually delivered one of the recipient's notifications. Hidden unrelated Admins, private contact fields and message content are not exposed.
