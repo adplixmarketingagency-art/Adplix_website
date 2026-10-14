@@ -1,4 +1,13 @@
-import { database, readState, mutate, session, issueSession, revokeUser, throttle } from './store.mjs'
+import {
+  activeSessionUserIds,
+  database,
+  readState,
+  mutate,
+  session,
+  issueSession,
+  revokeUser,
+  throttle,
+} from './store.mjs'
 import { normalizeEmail, validPassword, publicUser, tokenHash, cookie, clearCookie, sameOrigin } from './auth.mjs'
 import { hashPortalPassword, verifyPortalPassword } from './password-service.mjs'
 import { businessDate, dailyUpdateStatus, transitionTask, decorateTask, loginRecordFor } from './domain.mjs'
@@ -943,6 +952,16 @@ async function action(db, actorId, credentialVersion, a, env) {
         item.readAt ||= iso()
         subjectId = item.id
         break
+      case 'notification.clear':
+        item = s.notifications.find((x) => x.id === a.id && x.employeeId === actor.id)
+        if (!item) fail('Notification unavailable.', 404)
+        s.notifications = s.notifications.filter((x) => x !== item)
+        subjectId = item.id
+        break
+      case 'notification.clearAll':
+        s.notifications = (s.notifications || []).filter((x) => x.employeeId !== actor.id)
+        subjectId = actor.id
+        break
       default:
         fail('Unknown action.')
     }
@@ -1063,8 +1082,10 @@ export async function handlePortalApi(request, env, context) {
           (x) => x.id === current.id && x.active && x.passwordHash === current.passwordHash,
         )
       if (!sessionUser) fail('Invalid credentials.', 401)
-      const { token, csrfToken } = await issueSession(db, sessionUser)
-      return response({ user: publicUser(sessionUser), csrfToken }, 200, { 'Set-Cookie': cookie(token, request, env) })
+      const { token, csrfToken, expiresAt } = await issueSession(db, sessionUser)
+      return response({ user: publicUser(sessionUser), csrfToken }, 200, {
+        'Set-Cookie': cookie(token, request, env, expiresAt),
+      })
     }
     const auth = await session(db, request)
     if (!auth) fail('Sign in required.', 401)
@@ -1111,7 +1132,7 @@ export async function handlePortalApi(request, env, context) {
       if (!fresh || fresh.passwordHash !== passwordHash) fail('Credentials changed.', 409)
       const issued = await issueSession(db, fresh)
       return response({ user: publicUser(fresh), csrfToken: issued.csrfToken }, 200, {
-        'Set-Cookie': cookie(issued.token, request, env),
+        'Set-Cookie': cookie(issued.token, request, env, issued.expiresAt),
       })
     }
     if (user.mustChangePassword) fail('Change your password first.', 403)
@@ -1138,8 +1159,13 @@ export async function handlePortalApi(request, env, context) {
       admin(actor)
       const now = new Date(),
         filter = filters(new URL(request.url)),
+        onlineUserIds = await activeSessionUserIds(db, now.getTime()),
         data = buildAnalytics(
-          { ...snapshot(state, actor, now), loginRecords: Array.isArray(state.loginRecords) ? state.loginRecords : [] },
+          {
+            ...snapshot(state, actor, now),
+            loginRecords: Array.isArray(state.loginRecords) ? state.loginRecords : [],
+            onlineUserIds,
+          },
           filter,
           now,
         )

@@ -8,7 +8,7 @@ function instant(value) {
   return date.getTime()
 }
 
-function dateStart(value) {
+export function dateStart(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new RangeError('Invalid business date')
   const ms = Date.parse(`${value}T00:00:00.000Z`)
   if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 10) !== value)
@@ -20,24 +20,25 @@ export function businessDate(now = new Date()) {
   return new Date(instant(now) + OFFSET).toISOString().slice(0, 10)
 }
 
-export function loginSeconds(record, now = new Date()) {
+export function loginSeconds(record, now = new Date(), inProgress = false) {
   if (!record || typeof record.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(record.date)) return 0
   try {
     const start = instant(record.firstLoginAt)
-    const cutoff = dateStart(record.date) + 19 * 3_600_000
+    const active = typeof inProgress === 'boolean' ? inProgress : Boolean(inProgress?.inProgress)
+    const cutoff = dateStart(record.date) + (active ? 19 : 17.5) * 3_600_000
     return Math.max(0, Math.floor((Math.min(instant(now), cutoff) - start) / 1000))
   } catch {
     return 0
   }
 }
 
-// The attendance record for the current business day, visible only until cutoff.
-export function currentLoginRecord(records, employeeId, now = new Date()) {
+// Keep the current business-day record readable after the cap so Analytics can
+// show the final capped total. A new business date naturally returns no record.
+export function currentLoginRecord(records, employeeId, now = new Date(), inProgress = false) {
   if (!Array.isArray(records) || typeof employeeId !== 'string') return null
+  void inProgress
   const current = instant(now)
   const date = businessDate(current)
-  const cutoff = dateStart(date) + 19 * 3_600_000
-  if (current >= cutoff) return null
   return (
     records.find((record) => {
       if (

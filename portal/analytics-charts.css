@@ -99,7 +99,7 @@
   align-items: center;
   flex-wrap: wrap;
 }
-.employee-label > span:not(.employee-avatar) {
+.employee-label > span:not(.employee-avatar):not(.employee-avatar-wrap) {
   flex: 1 1 150px;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -132,6 +132,27 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.employee-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+}
+.employee-avatar-wrap .employee-avatar {
+  flex: 1 1 auto;
+}
+.online-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: #2f9e44;
+  box-shadow: 0 0 0 1px #2f9e4433;
 }
 
 .analytics-progress {
@@ -818,4 +839,507 @@ html[data-portal-theme='dark'] .progress-segment:focus-visible::after {
 
 html[data-portal-theme='dark'] .chart-data {
   border-color: var(--line);
+}
+
+/* ==========================================================================
+   Bklit UI Composable 3D Depth Bar Chart (@bklitui/ui/charts)
+   Features:
+   - 3D Depth & Glass Surfaces (BarDepthBack top lid + side facet + ground shadow)
+   - BarDepthFront specular glass sheen overlay
+   - Spring enter animations with physics curve cubic-bezier(0.16, 1, 0.3, 1)
+   - Composable anatomy: BarChart, Bar, BarXAxis, Grid horizontal, ChartTooltip
+   - Grouped series comparison (Completed vs Approved)
+   ========================================================================== */
+
+.bklit-chart-container {
+  margin: 16px 0 24px;
+  padding: 22px 20px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, var(--surface-soft) 100%);
+  box-shadow:
+    0 12px 32px -4px rgba(34, 29, 25, 0.06),
+    0 2px 6px rgba(34, 29, 25, 0.03);
+  position: relative;
+  overflow: hidden;
+}
+
+.bklit-chart-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-bottom: 24px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bklit-chart-title-wrap {
+  display: grid;
+  gap: 4px;
+}
+
+.bklit-chart-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 750;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+}
+
+.bklit-chart-subtitle {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.bklit-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.bklit-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.bklit-chip-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.bklit-chip-completed .bklit-chip-swatch {
+  background: linear-gradient(135deg, #389c80 0%, #28735d 100%);
+  border: 1px solid #1f5948;
+}
+
+.bklit-chip-approved .bklit-chip-swatch {
+  background: linear-gradient(135deg, #8a6abf 0%, #7658a5 100%);
+  border: 1px solid #5a4282;
+}
+
+.bklit-chip-pill {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(40, 115, 93, 0.08);
+  color: #28735d;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Chart Canvas & Stage */
+.bklit-chart-stage {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  position: relative;
+  min-height: 260px;
+  padding-top: 24px;
+}
+
+.bklit-yaxis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0 4px 34px 0;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  user-select: none;
+}
+
+.bklit-chart-viewport {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+}
+
+.bklit-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 34px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.bklit-grid-line {
+  width: 100%;
+  border-bottom: 1px dashed rgba(122, 100, 90, 0.18);
+}
+
+.bklit-grid-line:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.bklit-bars-area {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: clamp(14px, 3.5vw, 36px);
+  min-height: 220px;
+  padding: 0 16px 34px 16px;
+  perspective: 1000px;
+}
+
+/* Individual Bar Group */
+.bklit-bar-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 58px;
+  transition: opacity 220ms ease;
+}
+
+.bklit-bars-area:hover .bklit-bar-group:not(:hover) {
+  opacity: 0.55;
+}
+
+.bklit-bar-pair {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 200px;
+  position: relative;
+  padding: 0 8px;
+}
+
+/* Ground shadow underneath the group */
+.bklit-ground-shadow {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(34, 29, 25, 0.22) 0%, rgba(34, 29, 25, 0) 75%);
+  filter: blur(2px);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 3D Depth Bar Column */
+.bklit-bar-col {
+  position: relative;
+  width: clamp(20px, 2.5vw, 28px);
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.bklit-bar-wrapper {
+  position: relative;
+  width: 100%;
+  height: var(--bar-height, 0%);
+  min-height: 4px;
+  display: flex;
+  align-items: flex-end;
+  transform-origin: bottom center;
+  animation: bklit-bar-spring 950ms cubic-bezier(0.16, 1, 0.3, 1) var(--bar-delay, 0ms) both;
+}
+
+@keyframes bklit-bar-spring {
+  0% {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scaleY(1.08);
+    opacity: 1;
+  }
+  75% {
+    transform: scaleY(0.97);
+  }
+  90% {
+    transform: scaleY(1.02);
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+/* The Front Bar */
+.bklit-bar {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px 0 0 0;
+  cursor: pointer;
+  z-index: 2;
+  transition:
+    filter 180ms ease,
+    transform 180ms ease;
+  outline: none;
+}
+
+.bklit-bar.completed {
+  background: linear-gradient(180deg, #328f74 0%, #28735d 100%);
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.bklit-bar.approved {
+  background: linear-gradient(180deg, #8a6abf 0%, #7658a5 100%);
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.bklit-bar:hover,
+.bklit-bar:focus-visible {
+  filter: brightness(1.12);
+  transform: translate(-1px, -2px);
+}
+
+.bklit-bar:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+
+/* 3D Depth Back (Top Lid + Right Side Facet) */
+.bklit-bar-depth-back {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Top Lid */
+.bklit-lid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 9px;
+  transform-origin: bottom left;
+  transform: translateY(-9px) skewX(-45deg) scaleY(0.7);
+  border-top: 1px solid rgba(255, 255, 255, 0.55);
+}
+
+.bklit-col-completed .bklit-lid {
+  background: linear-gradient(135deg, #4ec4a2 0%, #3ca789 100%);
+}
+
+.bklit-col-approved .bklit-lid {
+  background: linear-gradient(135deg, #ad8ce5 0%, #9572d4 100%);
+}
+
+/* Side Facet */
+.bklit-side {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 9px;
+  height: 100%;
+  transform-origin: top left;
+  transform: translateX(100%) skewY(-45deg) scaleX(0.7);
+  border-right: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.bklit-col-completed .bklit-side {
+  background: linear-gradient(180deg, #205c4a 0%, #174537 100%);
+}
+
+.bklit-col-approved .bklit-side {
+  background: linear-gradient(180deg, #5b4382 0%, #463264 100%);
+}
+
+/* Glass Sheen Front Overlay (BarDepthFront) */
+.bklit-glass-sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.12) 42%, transparent 60%),
+    linear-gradient(to right, rgba(255, 255, 255, 0.25) 0%, transparent 35%, rgba(0, 0, 0, 0.08) 100%);
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+  border-top: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+/* Value badge inside/above bar */
+.bklit-bar-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.68rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* X-Axis Tick Label */
+.bklit-xaxis-tick {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 0.69rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* Chart Tooltip */
+.bklit-chart-tooltip {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 30;
+  min-width: 190px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(28, 24, 21, 0.94);
+  backdrop-filter: blur(10px);
+  color: #ffffff;
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition:
+    opacity 180ms ease,
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 180ms ease;
+}
+
+.bklit-chart-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px 6px 0 6px;
+  border-style: solid;
+  border-color: rgba(28, 24, 21, 0.94) transparent transparent transparent;
+}
+
+.bklit-bar-group:hover .bklit-chart-tooltip,
+.bklit-bar-group:focus-within .bklit-chart-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
+.bklit-tooltip-header {
+  font-size: 0.76rem;
+  font-weight: 750;
+  color: #fff;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.bklit-tooltip-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: baseline;
+  gap: 6px 8px;
+  font-size: 0.72rem;
+  margin-bottom: 4px;
+}
+
+.bklit-tooltip-row small {
+  grid-column: 2 / -1;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.66rem;
+  line-height: 1.3;
+}
+
+.bklit-tooltip-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  align-self: center;
+}
+
+.bklit-tooltip-completed .bklit-tooltip-indicator {
+  background: #3ec29f;
+  box-shadow: 0 0 6px #3ec29f88;
+}
+
+.bklit-tooltip-approved .bklit-tooltip-indicator {
+  background: #a983ed;
+  box-shadow: 0 0 6px #a983ed88;
+}
+
+.bklit-tooltip-label {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.bklit-tooltip-row strong {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.bklit-tooltip-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.bklit-tooltip-footer strong {
+  color: #fff;
+}
+
+/* Dark mode overrides for Bklit 3D Chart */
+html[data-portal-theme='dark'] .bklit-chart-container {
+  background: linear-gradient(180deg, #2b2522 0%, #201c1a 100%);
+  border-color: #4a3e38;
+  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.35);
+}
+
+html[data-portal-theme='dark'] .bklit-chart-header {
+  border-bottom-color: #4a3e38;
+}
+
+html[data-portal-theme='dark'] .bklit-grid-line {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-portal-theme='dark'] .bklit-grid-line:last-child {
+  border-bottom-color: #4a3e38;
+}
+
+html[data-portal-theme='dark'] .bklit-chip-pill {
+  background: rgba(40, 115, 93, 0.22);
+  color: #5adbb6;
+}
+
+html[data-portal-theme='dark'] .bklit-chart-tooltip {
+  background: rgba(18, 15, 13, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+html[data-portal-theme='dark'] .bklit-chart-tooltip::after {
+  border-color: rgba(18, 15, 13, 0.96) transparent transparent transparent;
 }

@@ -8,6 +8,13 @@ export const tokenHash = (t) => hex(sha256(enc.encode(t)))
 export const normalizeEmail = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : '')
 export const validPassword = (v) =>
   typeof v === 'string' && v.length >= 12 && v.length <= 256 && enc.encode(v).length <= 1024
+const IST_OFFSET = 330 * 60_000
+export function sessionExpiryAt(now = Date.now()) {
+  const instant = now instanceof Date ? now.getTime() : Number(now)
+  if (!Number.isFinite(instant)) throw new RangeError('Invalid session time')
+  const local = new Date(instant + IST_OFFSET)
+  return Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + 1) - IST_OFFSET
+}
 export async function hashPassword(v) {
   if (!validPassword(v)) throw Object.assign(new Error('Password must be 12–256 characters.'), { status: 400 })
   const salt = crypto.getRandomValues(new Uint8Array(24))
@@ -45,14 +52,15 @@ export const publicUser = (u) => ({
   createdAt: u.createdAt || null,
   deactivatedAt: u.deactivatedAt || null,
 })
-export function cookie(token, request, env) {
+export function cookie(token, request, env, expiresAt = sessionExpiryAt()) {
   const secure = new URL(request.url).protocol === 'https:'
   if (
     !secure &&
     (env.PORTAL_ALLOW_HTTP_LOCAL !== 'true' || !['localhost', '127.0.0.1'].includes(new URL(request.url).hostname))
   )
     throw Object.assign(new Error('HTTPS required.'), { status: 503 })
-  return `portal_session=${token}; HttpOnly; SameSite=Strict; Path=/api/portal; Max-Age=604800${secure ? '; Secure' : ''}`
+  const maxAge = Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000))
+  return `portal_session=${token}; HttpOnly; SameSite=Strict; Path=/api/portal; Max-Age=${maxAge}${secure ? '; Secure' : ''}`
 }
 export const clearCookie = (r) =>
   `portal_session=; HttpOnly; SameSite=Strict; Path=/api/portal; Max-Age=0${new URL(r.url).protocol === 'https:' ? '; Secure' : ''}`

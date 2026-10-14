@@ -130,6 +130,8 @@ const asUser = (fixture, user, token = 'a'.repeat(64)) => {
   fixture.sessions.set(tokenHash(token), {
     user_id: user.id,
     csrf_hash: tokenHash(csrf),
+    created_at: Date.now(),
+    expires_at: Date.now() + 86_400_000,
     credential_version: user.credentialVersion || 0,
   })
   return {
@@ -308,8 +310,39 @@ test('recipient snapshots pick up notes and broadcasts without push, expose only
   assert.equal((await snapshot(employeeHeaders)).notifications[0].readAt, readAt)
   assert.equal((await snapshot(otherHeaders)).notifications[0].readAt, null)
 
+  assert.equal(
+    (await callWith(f, 'actions', 'POST', otherHeaders, { type: 'notification.clear', id: notificationId })).status,
+    404,
+  )
+  assert.equal(
+    (await callWith(f, 'actions', 'POST', employeeHeaders, { type: 'notification.clear', id: notificationId })).status,
+    200,
+  )
+  assert.equal((await snapshot(employeeHeaders)).notifications.length, 1)
+
+  // Test clearAll
+  f.state.notifications = [
+    { id: 'n1', employeeId: 'employee', title: 'A', text: 'B', createdAt: '2026-10-14T00:00:00Z', readAt: null },
+    { id: 'n2', employeeId: 'employee', title: 'C', text: 'D', createdAt: '2026-10-14T00:00:00Z', readAt: null },
+    { id: 'n3', employeeId: 'other', title: 'E', text: 'F', createdAt: '2026-10-14T00:00:00Z', readAt: null },
+  ]
+  assert.equal((await snapshot(employeeHeaders)).notifications.length, 2)
+  assert.equal((await callWith(f, 'actions', 'POST', employeeHeaders, { type: 'notification.clearAll' })).status, 200)
+  assert.equal((await snapshot(employeeHeaders)).notifications.length, 0)
+  assert.equal((await snapshot(otherHeaders)).notifications.length, 1)
+
   // Older state can carry extra fields; snapshots must never serialize them to recipients.
-  f.state.notifications[0].passwordHash = 'legacy-secret'
+  f.state.notifications = [
+    {
+      id: 'n4',
+      employeeId: 'employee',
+      title: 'A',
+      text: 'B',
+      passwordHash: 'legacy-secret',
+      createdAt: '2026-10-14T00:00:00Z',
+      readAt: null,
+    },
+  ]
   assert.equal(JSON.stringify((await snapshot(employeeHeaders)).notifications).includes('legacy-secret'), false)
   f.state.notes[0].passwordHash = 'legacy-note-secret'
   f.state.notifications = []

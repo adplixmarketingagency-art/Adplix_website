@@ -1,4 +1,12 @@
-import { businessDate, dailyUpdateStatus, decorateTask, loginSeconds, currentLoginRecord } from './domain.mjs'
+import {
+  businessDate,
+  dateStart,
+  dailyUpdateStatus,
+  decorateTask,
+  loginSeconds,
+  currentLoginRecord,
+  workingSeconds,
+} from './domain.mjs'
 import { TASK_CATEGORIES, taskCategory } from './task-categories.mjs'
 
 // Date filters select task counts by creation business date; trend dates select event business dates.
@@ -45,6 +53,7 @@ export function buildAnalytics(snapshot, filters = {}, now = new Date()) {
     invalid('Reporting range too large')
   const inRange = (date) => (!from || date >= from) && (!to || date <= to)
   const absences = snapshot.absences || []
+  const onlineUserIds = snapshot.onlineUserIds instanceof Set ? snapshot.onlineUserIds : new Set()
   const scopedTasks = (snapshot.tasks || []).filter(
     (task) =>
       (!employeeId || task.assigneeId === employeeId) &&
@@ -152,15 +161,47 @@ export function buildAnalytics(snapshot, filters = {}, now = new Date()) {
           else if (status === 'overdue') counts.updateMissing++
         }
       }
+      const allEmployeeTasks = (snapshot.tasks || []).filter((t) => t && t.assigneeId === e.id)
+      const hasInProgressNow =
+        allEmployeeTasks.some((t) => t.state === 'In-progress') || group.some((t) => t.state === 'In-progress')
+      const todayLoginCapHour = hasInProgressNow ? 19 : 17.5
+      const todayEnd = Math.min(current.getTime(), dateStart(today) + todayLoginCapHour * 3_600_000)
+      const todayStart = dateStart(today)
+      const todayIntervals = []
+      for (const task of allEmployeeTasks) {
+        for (const interval of task.intervals || []) {
+          const start = Date.parse(interval.start)
+          const end = interval.end == null ? todayEnd : Date.parse(interval.end)
+          if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+            const left = Math.max(start, todayStart)
+            const right = Math.min(end, todayEnd)
+            if (right > left)
+              todayIntervals.push({ start: new Date(left).toISOString(), end: new Date(right).toISOString() })
+          }
+        }
+      }
+      const todayWorkSeconds = workingSeconds(todayIntervals, absences, new Date(todayEnd))
+      const recordInProgress = (r) => {
+        if (r.date === today) return hasInProgressNow
+        const start530 = dateStart(r.date) + 17.5 * 3_600_000
+        const end700 = dateStart(r.date) + 19 * 3_600_000
+        return allEmployeeTasks.some((t) =>
+          (t.intervals || []).some((interval) => {
+            const s = Date.parse(interval.start)
+            const end = interval.end ? Date.parse(interval.end) : Infinity
+            return Number.isFinite(s) && s < end700 && end > start530
+          }),
+        )
+      }
       const records = (snapshot.loginRecords || []).filter((r) => r && r.employeeId === e.id && inRange(r.date))
       const loginDays = records.length
-      const loginTotal = records.reduce((sum, r) => sum + loginSeconds(r, current), 0)
+      const loginTotal = records.reduce((sum, r) => sum + loginSeconds(r, current, recordInProgress(r)), 0)
       const firstLoginAt =
         records
           .map((r) => r.firstLoginAt)
           .filter(Boolean)
           .sort()[0] || null
-      const todayRecord = currentLoginRecord(snapshot.loginRecords || [], e.id, current)
+      const todayRecord = currentLoginRecord(snapshot.loginRecords || [], e.id, current, hasInProgressNow)
       return {
         id: e.id,
         name: e.name,
@@ -169,11 +210,21 @@ export function buildAnalytics(snapshot, filters = {}, now = new Date()) {
         loginSeconds: loginTotal,
         loginDays,
         todayFirstLoginAt: todayRecord?.firstLoginAt || null,
-        todayLoginSeconds: todayRecord ? loginSeconds(todayRecord, current) : 0,
+        todayLoginSeconds: todayRecord ? loginSeconds(todayRecord, current, hasInProgressNow) : 0,
+        todayWorkSeconds,
+        todayLoginCapHour,
+        online: onlineUserIds.has(e.id),
         ...stats(group),
         rejections: group.reduce((n, t) => n + (t.events || []).filter((v) => v.kind === 'rejection').length, 0),
         ...counts,
       }
+    })
+    .sort((a, b) => {
+      const first = Date.parse(a.todayFirstLoginAt || a.firstLoginAt || '')
+      const second = Date.parse(b.todayFirstLoginAt || b.firstLoginAt || '')
+      if (Number.isFinite(first) && Number.isFinite(second) && first !== second) return first - second
+      if (Number.isFinite(first) !== Number.isFinite(second)) return Number.isFinite(first) ? -1 : 1
+      return a.name.localeCompare(b.name)
     })
   const summaryLogins = employees.reduce(
     (a, e) => ({ loginSeconds: a.loginSeconds + e.loginSeconds, loginDays: a.loginDays + e.loginDays }),
@@ -210,5 +261,6 @@ export function buildAnalytics(snapshot, filters = {}, now = new Date()) {
     })),
     tasks,
     filters: { ...filters, from: from || null, to: to || null },
+    todayBusinessDate: today,
   }
 }

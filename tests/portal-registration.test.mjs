@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { handlePortalApi } from '../src/portal/api.mjs'
-import { hashPassword, verifyPassword } from '../src/portal/auth.mjs'
-import { issueSession } from '../src/portal/store.mjs'
+import { hashPassword, sessionExpiryAt, tokenHash, verifyPassword } from '../src/portal/auth.mjs'
+import { issueSession, session } from '../src/portal/store.mjs'
 import { fakePortalPasswords } from './support/portal-passwords.mjs'
 
 const origin = 'https://portal.test'
@@ -59,7 +59,7 @@ function fixture() {
     const { token, csrfToken } = await issueSession(db, user)
     return { Cookie: `portal_session=${token}`, 'X-CSRF-Token': csrfToken }
   }
-  return { sql, state, save, request, login, as, env, passwords }
+  return { sql, db, state, save, request, login, as, env, passwords }
 }
 
 async function withAdmin(f) {
@@ -103,6 +103,23 @@ test('registration needs a provisioned Admin and origin, throttles persistently 
   const limits = f.sql.prepare('SELECT bucket FROM portal_login_limits').all()
   assert.ok(limits.some((row) => row.bucket.startsWith('regIP:')))
   assert.ok(limits.some((row) => row.bucket.startsWith('regEmail:')))
+})
+
+test('sessions reject the daily midnight cutoff even when a legacy seven-day expiry remains', async (t) => {
+  const f = fixture()
+  t.after(() => f.sql.close())
+  const auth = await withAdmin(f)
+  const token = /portal_session=([a-f0-9]{64})/.exec(auth.Cookie)?.[1]
+  const createdAt = Date.parse('2026-10-11T18:29:59.000Z')
+  const now = Date.parse('2026-10-12T18:30:00.000Z')
+  f.sql
+    .prepare('UPDATE portal_sessions SET created_at=?, expires_at=? WHERE token_hash=?')
+    .run(createdAt, now + 6 * 86_400_000, tokenHash(token))
+  assert.equal(sessionExpiryAt(createdAt), Date.parse('2026-10-11T18:30:00.000Z'))
+  assert.equal(
+    await session(f.db, new Request(origin + '/api/portal/session', { headers: { Cookie: auth.Cookie } }), now),
+    null,
+  )
 })
 
 test('pending registrations remain private, duplicates preserve hash and identity, approval creates only an Employee', async (t) => {

@@ -91,18 +91,21 @@ test('uses today login fields, including zero and legacy fallback labels', () =>
       name: 'Today',
       todayFirstLoginAt: null,
       todayLoginSeconds: 0,
+      todayWorkSeconds: 7200,
       firstLoginAt: '2020-01-01T00:00:00Z',
       loginSeconds: 3600,
     },
   ])
   assert.match(today, /Today's first login <strong>—<\/strong>/)
   assert.match(today, /0h 0m logged today/)
+  assert.match(today, /Today's work <strong>2h 0m<\/strong>/)
   const legacy = employeeChart([{ name: 'Legacy', firstLoginAt: '2020-01-01T00:00:00Z', loginSeconds: 60 }])
   assert.match(legacy, /First login \(historical fallback\)/)
   assert.match(legacy, /historical fallback/)
   assert.match(today, /login days in selected period/)
   assert.match(today, /data-today-login="e&quot; onmouseover=&quot;bad\(\)"/)
   assert.match(today, /data-today-duration="e&quot; onmouseover=&quot;bad\(\)"/)
+  assert.match(today, /data-today-work="e&quot; onmouseover=&quot;bad\(\)"/)
   assert.doesNotMatch(today, /data-today-login="e" onmouseover=/)
   assert.doesNotMatch(legacy, /data-today-login/)
 })
@@ -127,6 +130,16 @@ test('labels Admin and Employee rows and shows Admin first login and duration', 
   assert.match(html, /First login \(historical fallback\) <strong>10:00<\/strong>/)
   assert.match(html, /1h 30m logged · selected period/)
   assert.match(html, /Current task status and attendance by team member/)
+})
+
+test('renders the Analytics-only online dot and accessible online label', () => {
+  const html = employeeChart([
+    { id: 'online', name: 'Online Admin', role: 'Admin', online: true },
+    { id: 'offline', name: 'Offline Employee', role: 'Employee', online: false },
+  ])
+  assert.match(html, /class="online-dot" role="img" title="Online" aria-label="Online"/)
+  assert.match(html, /aria-label="Online Admin, Admin"/)
+  assert.doesNotMatch(html, /Offline Employee, Employee, online/)
 })
 
 test('exports role-aware team rows with Admin login fields and legacy role fallback', () => {
@@ -221,4 +234,30 @@ test('long cohort counts render bounded segment count, with honest state percent
   assert.match(html, /Other 50001\/100000 complete/)
   assert.equal((html.match(/class="progress-segment /g) || []).length, 3)
   assert.match(html, /Other — 49999 open \(Assigned\)/)
+})
+
+test('employee chart shows capped 19:00 for in-progress employees and capped 17:30 otherwise', () => {
+  const html = employeeChart([
+    {
+      id: 'active',
+      name: 'Active Worker',
+      inProgress: 1,
+      completed: 0,
+      todayLoginSeconds: 28800,
+      todayFirstLoginAt: '2026-10-12T04:30:00Z',
+    },
+    {
+      id: 'done',
+      name: 'Done Worker',
+      inProgress: 0,
+      completed: 2,
+      todayLoginSeconds: 27000,
+      todayFirstLoginAt: '2026-10-12T04:30:00Z',
+    },
+  ])
+  assert.match(html, /Active Worker/)
+  assert.match(html, /capped 19:00/)
+  assert.match(html, /Done Worker/)
+  assert.match(html, /capped 17:30/)
+  assert.match(html, /capped at 17:30 IST \(extended to 19:00 IST when tasks are in progress\)/)
 })

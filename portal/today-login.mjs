@@ -22,3 +22,10 @@ export function todayLoginExpired(serverNow, now = Date.now()) {
   const server = Date.parse(serverNow)
   return Number.isFinite(server) && (day(now) !== day(server) || hour(now) >= '19:00')
 }
+
+// Attendance totals remain visible after the business-day cap. The client
+// should clear them only when the displayed business date changes.
+export function todayLoginDayChanged(serverNow, now = Date.now()) {
+  const server = Date.parse(serverNow)
+  return Number.isFinite(server) && day(now) !== day(server)
+}

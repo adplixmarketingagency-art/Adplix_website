@@ -29,15 +29,31 @@ export async function mutate(db, callback) {
 export async function revokeUser(db, id) {
   await db.prepare('DELETE FROM portal_sessions WHERE user_id = ?').bind(id).run()
 }
-export async function session(db, request) {
+export async function activeSessionUserIds(db, now = Date.now()) {
+  const query = db.prepare('SELECT user_id, created_at FROM portal_sessions WHERE expires_at > ?').bind(now)
+  if (typeof query.all !== 'function') return new Set()
+  const { sessionExpiryAt } = await import('./auth.mjs')
+  const result = await query.all()
+  return new Set(
+    (result.results || [])
+      .filter((row) => now < sessionExpiryAt(row.created_at))
+      .map((row) => row.user_id)
+      .filter((id) => typeof id === 'string'),
+  )
+}
+export async function session(db, request, now = Date.now()) {
   const token = /(?:^|;\s*)portal_session=([a-f0-9]{64})(?:;|$)/.exec(request.headers.get('Cookie') || '')?.[1]
   if (!token) return null
-  const { tokenHash } = await import('./auth.mjs')
+  const { sessionExpiryAt, tokenHash } = await import('./auth.mjs')
   const row = await db
     .prepare('SELECT * FROM portal_sessions WHERE token_hash = ? AND expires_at > ?')
-    .bind(tokenHash(token), Date.now())
+    .bind(tokenHash(token), now)
     .first()
   if (!row) return null
+  // Session rows created before the daily-expiry rollout may still carry their
+  // original seven-day expires_at. Apply the day boundary from created_at too,
+  // so no existing Admin or Employee session survives the first midnight.
+  if (now >= sessionExpiryAt(row.created_at)) return null
   const { state } = await readState(db)
   const user = state.users.find(
     (u) => u.id === row.user_id && u.active && (u.credentialVersion || 0) === row.credential_version,
@@ -45,7 +61,8 @@ export async function session(db, request) {
   return user ? { user, row, token } : null
 }
 export async function issueSession(db, user) {
-  const { randomToken, tokenHash } = await import('./auth.mjs')
+  const { randomToken, sessionExpiryAt, tokenHash } = await import('./auth.mjs')
+  const createdAt = Date.now()
   const token = randomToken(),
     csrfToken = tokenHash('csrf:' + token)
   await db
@@ -56,12 +73,12 @@ export async function issueSession(db, user) {
       tokenHash(token),
       user.id,
       tokenHash(csrfToken),
-      Date.now() + 604800000,
-      Date.now(),
+      sessionExpiryAt(createdAt),
+      createdAt,
       user.credentialVersion || 0,
     )
     .run()
-  return { token, csrfToken }
+  return { token, csrfToken, expiresAt: sessionExpiryAt(createdAt) }
 }
 export async function throttle(db, bucket) {
   const now = Date.now(),

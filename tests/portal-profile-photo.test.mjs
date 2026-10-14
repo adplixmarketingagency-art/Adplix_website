@@ -130,6 +130,8 @@ function headers(f, user, token = 'a'.repeat(64)) {
   f.sessions.set(tokenHash(token), {
     user_id: user.id,
     csrf_hash: tokenHash(csrf),
+    created_at: Date.now(),
+    expires_at: Date.now() + 86_400_000,
     credential_version: user.credentialVersion || 0,
   })
   return {

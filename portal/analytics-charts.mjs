@@ -62,12 +62,14 @@ function assignmentSlots(types) {
 }
 
 export function employeeChart(rows, renderName = (person) => esc(person.name), renderAvatar = () => '') {
-  const sorted = [...rows].sort(
-    (a, b) =>
-      currentTypes(b).reduce((sum, type) => sum + type.total, 0) -
-      currentTypes(a).reduce((sum, type) => sum + type.total, 0),
-  )
-  return `${legend('Team current status legend', true)}<p class="chart-note">Each task completion fills one slot in its task-type colour. Approved tasks stay filled; reopened tasks return to dotted. Login duration is shown for every team member and capped at 19:00 IST; working time follows the same business-day close.</p><div class="employee-chart" role="list" aria-label="Current task status and attendance by team member">${sorted
+  const sorted = [...rows].sort((a, b) => {
+    const first = Date.parse(a.todayFirstLoginAt || a.firstLoginAt || '')
+    const second = Date.parse(b.todayFirstLoginAt || b.firstLoginAt || '')
+    if (Number.isFinite(first) && Number.isFinite(second) && first !== second) return first - second
+    if (Number.isFinite(first) !== Number.isFinite(second)) return Number.isFinite(first) ? -1 : 1
+    return String(a.name || '').localeCompare(String(b.name || ''))
+  })
+  return `${legend('Team current status legend', true)}<p class="chart-note">Each task completion fills one slot in its task-type colour. Approved tasks stay filled; reopened tasks return to dotted. Login duration is shown for every team member and capped at 17:30 IST (extended to 19:00 IST when tasks are in progress); working time follows the same business-day close.</p><div class="employee-chart" role="list" aria-label="Current task status and attendance by team member">${sorted
     .map((e) => {
       const types = currentTypes(e),
         total = types.reduce((sum, type) => sum + type.total, 0),
@@ -76,16 +78,29 @@ export function employeeChart(rows, renderName = (person) => esc(person.name), r
       const counts = types.map((type) => `${type.label}: ${type.done} of ${type.total} complete`).join('; ')
       const today =
         Object.prototype.hasOwnProperty.call(e, 'todayFirstLoginAt') ||
-        Object.prototype.hasOwnProperty.call(e, 'todayLoginSeconds')
+        Object.prototype.hasOwnProperty.call(e, 'todayLoginSeconds') ||
+        Object.prototype.hasOwnProperty.call(e, 'todayWorkSeconds')
       const loginLabel = today ? "Today's first login" : 'First login (historical fallback)'
       const loginAt = today ? e.todayFirstLoginAt : e.firstLoginAt
       const loginSeconds = today ? e.todayLoginSeconds : e.loginSeconds
       const role = e.role === 'Admin' ? 'Admin' : 'Employee'
+      const online = Boolean(e.online)
+      const capHour =
+        Number(e.todayLoginCapHour) === 19
+          ? 19
+          : Number(e.todayLoginCapHour) === 17.5
+            ? 17.5
+            : n(e.inProgress) > 0
+              ? 19
+              : 17.5
+      const capLabel = capHour === 19 ? 'capped 19:00' : 'capped 17:30'
+      const capLimit = capHour * 3600
+      const todayWork = n(e.todayWorkSeconds)
       return `<div class="employee-row" role="listitem" aria-label="${esc(e.name)}, ${role}">
-       <div class="employee-label">${renderAvatar(e)}<span>${renderName(e)} <small class="team-member-role">${role}</small></span><strong>${done} of ${total} completed (${total ? Math.round((done / total) * 100) : 0}%)</strong></div>
+       <div class="employee-label"><span class="employee-avatar-wrap">${renderAvatar(e)}${online ? '<span class="online-dot" role="img" title="Online" aria-label="Online"></span>' : ''}</span><span>${renderName(e)} <small class="team-member-role">${role}</small></span><strong>${done} of ${total} completed (${total ? Math.round((done / total) * 100) : 0}%)</strong></div>
        <div class="assignment-track${slots.grouped ? ' assignment-track--grouped' : ''}" role="group" aria-label="${esc(e.name)}: ${done} completed of ${total}; Assigned ${n(e.assigned)}, In-progress ${n(e.inProgress)}, Completed ${n(e.completed)}, Approved ${n(e.approved)}${counts ? `; ${counts}` : ''}">${total ? slots.html : '<span class="assignment-empty">No tasks assigned</span>'}</div>
        ${total ? `<ul class="assignment-type-counts" aria-label="${esc(e.name)} task-type progress">${types.map((type) => `<li class="${colorClass(type.key)}">${type.label} <strong>${type.done}/${type.total}</strong> complete</li>`).join('')}</ul>` : ''}
-          <div class="employee-attendance"><span>Assigned ${n(e.assigned)} · In-progress ${n(e.inProgress)} · Completed ${n(e.completed)} · Approved ${n(e.approved)}</span><span${today ? ` data-today-login="${esc(e.id)}"` : ''}>${loginLabel} <strong>${esc(loginClock(loginAt))}</strong></span><span>${n(e.loginDays)} login days in selected period</span><span${today ? ` data-today-duration="${esc(e.id)}"` : ''}>${duration(Math.min(n(loginSeconds), 19 * 3600))} logged${today ? ' today' : ' · selected period (historical fallback)'} · capped 19:00</span><small>Active work ${n(e.activeWork)} · Active rework ${n(e.activeRework)} · Historical iterations ${n(e.workCount)} / rework ${n(e.reworkCount)}</small></div>
+           <div class="employee-attendance"><span>Assigned ${n(e.assigned)} · In-progress ${n(e.inProgress)} · Completed ${n(e.completed)} · Approved ${n(e.approved)}</span><span${today ? ` data-today-login="${esc(e.id)}"` : ''}>${loginLabel} <strong>${esc(loginClock(loginAt))}</strong></span><span>${n(e.loginDays)} login days in selected period</span><span${today ? ` data-today-duration="${esc(e.id)}"` : ''}>${duration(Math.min(n(loginSeconds), capLimit))} logged${today ? ' today' : ' · selected period (historical fallback)'} · ${capLabel}</span>${today ? `<span data-today-work="${esc(e.id)}">Today's work <strong>${duration(todayWork)}</strong></span>` : ''}<small>Active work ${n(e.activeWork)} · Active rework ${n(e.activeRework)} · Historical iterations ${n(e.workCount)} / rework ${n(e.reworkCount)}</small></div>
      </div>`
     })
     .join('')}</div>`
@@ -150,6 +165,88 @@ export function trendChart(rows, breakdownRows = [], assignmentRows = []) {
   const eventMax = Math.max(1, ...dates.flatMap((row) => [n(row.completed), n(row.approved)]))
   const barSize = (count) => Math.min(100, (n(count) / eventMax) * 100)
   const breakdown = (row, key) => textCounts(row[`${key}ByType`])
+  const bklitBarChart = () => {
+    if (!dates.length) return ''
+    const ticks = [
+      eventMax,
+      Math.round(eventMax * 0.75),
+      Math.round(eventMax * 0.5),
+      Math.round(eventMax * 0.25),
+      0,
+    ].filter((v, i, a) => a.indexOf(v) === i)
+    const totalCompleted = dates.reduce((s, r) => s + n(r.completed), 0)
+    const totalApproved = dates.reduce((s, r) => s + n(r.approved), 0)
+    return `<div class="bklit-chart-container">
+      <div class="bklit-chart-header">
+        <div class="bklit-chart-title-wrap">
+          <p class="chart-kicker">Composable 3D Depth Visualization</p>
+          <h4 class="bklit-chart-title">Comparative Daily Transition Velocity</h4>
+          <p class="bklit-chart-subtitle">Grouped series comparing First Completed and First Approved event transitions.</p>
+        </div>
+        <div class="bklit-legend">
+          <span class="bklit-legend-chip bklit-chip-completed"><span class="bklit-chip-swatch"></span>Completed <strong>${totalCompleted}</strong></span>
+          <span class="bklit-legend-chip bklit-chip-approved"><span class="bklit-chip-swatch"></span>Approved <strong>${totalApproved}</strong></span>
+          <span class="bklit-chip-pill">3D Depth &amp; Glass Surface</span>
+        </div>
+      </div>
+      <div class="bklit-chart-stage">
+        <div class="bklit-yaxis" aria-hidden="true">${ticks.map((t) => `<span>${t}</span>`).join('')}</div>
+        <div class="bklit-chart-viewport" tabindex="0" role="region" aria-label="3D comparative daily transition velocity chart">
+          <div class="bklit-grid bklit-grid-horizontal" aria-hidden="true">${ticks.map(() => '<div class="bklit-grid-line"></div>').join('')}</div>
+          <div class="bklit-bars-area" role="list" aria-label="3D Depth grouped bars by date">${dates
+            .map((row, idx) => {
+              const comp = n(row.completed)
+              const app = n(row.approved)
+              const compPct = Math.min(100, (comp / eventMax) * 100)
+              const appPct = Math.min(100, (app / eventMax) * 100)
+              const dateLabel = row.date.length >= 10 ? row.date.slice(5) : row.date
+              return `<div class="bklit-bar-group" role="listitem" data-date="${esc(row.date)}">
+                <div class="bklit-ground-shadow" aria-hidden="true"></div>
+                <div class="bklit-bar-pair">
+                  <div class="bklit-bar-col bklit-col-completed" style="--bar-height:${compPct}%;--bar-delay:${idx * 45}ms;">
+                    <div class="bklit-bar-depth-back" aria-hidden="true"><span class="bklit-lid"></span><span class="bklit-side"></span><span class="bklit-contact-shadow"></span></div>
+                    <div class="bklit-bar bklit-bar-fill completed" aria-hidden="true">
+                      <div class="bklit-bar-front"></div>
+                      <div class="bklit-bar-depth-front bklit-glass-sheen"></div>
+                      ${comp > 0 ? `<span class="bklit-bar-badge">${comp}</span>` : ''}
+                    </div>
+                  </div>
+                  <div class="bklit-bar-col bklit-col-approved" style="--bar-height:${appPct}%;--bar-delay:${idx * 45 + 25}ms;">
+                    <div class="bklit-bar-depth-back" aria-hidden="true"><span class="bklit-lid"></span><span class="bklit-side"></span><span class="bklit-contact-shadow"></span></div>
+                    <div class="bklit-bar bklit-bar-fill approved" aria-hidden="true">
+                      <div class="bklit-bar-front"></div>
+                      <div class="bklit-bar-depth-front bklit-glass-sheen"></div>
+                      ${app > 0 ? `<span class="bklit-bar-badge">${app}</span>` : ''}
+                    </div>
+                  </div>
+                </div>
+                <div class="bklit-chart-tooltip" role="tooltip">
+                  <div class="bklit-tooltip-header"><time datetime="${esc(row.date)}">${esc(row.date)}</time></div>
+                  <div class="bklit-tooltip-row bklit-tooltip-completed">
+                    <span class="bklit-tooltip-indicator"></span>
+                    <span class="bklit-tooltip-label">Completed</span>
+                    <strong>${comp}</strong>
+                    ${comp > 0 ? `<small>${esc(breakdown(row, 'completed'))}</small>` : ''}
+                  </div>
+                  <div class="bklit-tooltip-row bklit-tooltip-approved">
+                    <span class="bklit-tooltip-indicator"></span>
+                    <span class="bklit-tooltip-label">Approved</span>
+                    <strong>${app}</strong>
+                    ${app > 0 ? `<small>${esc(breakdown(row, 'approved'))}</small>` : ''}
+                  </div>
+                  <div class="bklit-tooltip-footer">
+                    <span>Day total:</span>
+                    <strong>${comp + app}</strong>
+                  </div>
+                </div>
+                <div class="bklit-xaxis-tick"><time datetime="${esc(row.date)}">${esc(dateLabel)}</time></div>
+              </div>`
+            })
+            .join('')}</div>
+        </div>
+      </div>
+    </div>`
+  }
   const eventChart = (label, key, modifier) => {
     const description =
       key === 'completed' ? 'First Completed events by event date.' : 'First Approved events by event date.'
@@ -192,7 +289,7 @@ export function trendChart(rows, breakdownRows = [], assignmentRows = []) {
     : '<p class="progress-empty" role="status">No first completion or approval events in this range.</p>'
   return `<div class="analytics-progress">
     <section class="progress-section analytics-summary" aria-labelledby="analytics-summary-title"><div class="analytics-section-heading"><div><p class="chart-kicker">Executive view</p><h3 id="analytics-summary-title">Work outcomes</h3><p class="chart-note">A concise view of current task state. Historical events below are measured by their first transition date and are not added to these current counts.</p></div></div><div class="progress-metrics analytics-summary-band" aria-label="Current work summary"><div class="analytics-summary-metric"><span>Created</span><strong>${total}</strong><small>current assignment capacity</small></div><div class="analytics-summary-metric"><span>Done</span><strong>${done}</strong><small>completed or approved now</small></div><div class="analytics-summary-metric"><span>Open</span><strong>${open}</strong><small>assigned or in-progress now</small></div><div class="analytics-summary-metric"><span>Completion rate</span><strong>${completionRate}%</strong><small>${done} of ${total} current tasks</small></div></div></section>
-    <section class="progress-section analytics-trends" aria-labelledby="analytics-trends-title"><div class="analytics-section-heading"><div><p class="chart-kicker">Historical activity</p><h3 id="analytics-trends-title">Completed over time + Approved over time</h3><p class="chart-note">Each chart uses the first transition event for that date. Counts stay separate from current assignment cohorts.</p></div></div>${legend('Task type legend')}${dates.length ? `<div class="event-chart-grid">${eventChart('Completed over time', 'completed', 'completed')}${eventChart('Approved over time', 'approved', 'approved')}</div>` : '<p class="progress-empty" role="status">No completion or approval events in this range.</p>'}</section>
+    <section class="progress-section analytics-trends" aria-labelledby="analytics-trends-title"><div class="analytics-section-heading"><div><p class="chart-kicker">Historical activity</p><h3 id="analytics-trends-title">Completed over time + Approved over time</h3><p class="chart-note">Each chart uses the first transition event for that date. Counts stay separate from current assignment cohorts.</p></div></div>${legend('Task type legend')}${dates.length ? `${bklitBarChart()}<div class="event-chart-grid">${eventChart('Completed over time', 'completed', 'completed')}${eventChart('Approved over time', 'approved', 'approved')}</div>` : '<p class="progress-empty" role="status">No completion or approval events in this range.</p>'}</section>
     <section class="progress-section current-pipeline" aria-labelledby="current-pipeline-title"><div class="analytics-section-heading"><div><p class="chart-kicker">Current state</p><h3 id="current-pipeline-title">Current work pipeline</h3><p class="chart-note">Assignment cohorts grouped by creation date. Filled segments are currently Completed or Approved; dotted segments are currently Assigned or In-progress. Reopened work stays open here.</p></div></div>${pipeline}<details class="chart-data"><summary>View current pipeline table</summary><div class="table-wrap"><table><caption>Current task states by assignment date and task type</caption><thead><tr><th scope="col">Created</th><th scope="col">Total</th><th scope="col">Assigned</th><th scope="col">In-progress</th><th scope="col">Completed</th><th scope="col">Approved</th><th scope="col">Task types (complete / total)</th></tr></thead><tbody>${
       cohorts
         .map(

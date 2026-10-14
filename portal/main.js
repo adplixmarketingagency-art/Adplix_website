@@ -11,10 +11,11 @@ import { employeeChart, trendChart as renderTrendChart } from './analytics-chart
 import { analyticsPresetFilters } from './analytics-filters.mjs'
 import { parseJsonResponse } from './http.mjs'
 import { dailyStatusDisplay } from './daily-status.mjs'
-import { sortTasks, taskStateClass } from './task-presentation.mjs'
+import { sortTasks, taskStateClass, tasksForView } from './task-presentation.mjs'
+import { sortNewest } from './list-sorting.mjs'
 import { preparePhoto, PROFILE_PHOTO_SIZE, savedPhotoFile } from './photo.mjs'
 import { cropPhoto } from './photo-crop-dialog.mjs'
-import { serverOffset, todayLoginExpired } from './today-login.mjs'
+import { serverOffset, todayLoginDayChanged } from './today-login.mjs'
 import { profileName, safeProfilePhoto, installProfileGlimpses } from './profile-glimpse.mjs'
 import { createInboxTracker } from './inbox.mjs'
 import {
@@ -366,7 +367,7 @@ function login() {
   inboxTracker.reset()
   state.notificationPopup = null
   glimpses.close()
-  root.innerHTML = `<main class="auth"><div class="auth-card">${authCardTop()}<p class="eyebrow">Private workspace</p><h1>Welcome back.</h1><p class="muted">Sign in with your approved email address.</p><div id="feedback" class="feedback ${state.error ? 'error' : ''}" role="alert" tabindex="-1">${esc(state.error)}</div><form data-form="login">${input('email', 'Email address', 'email', '', 'required autocomplete="username"')}${input('password', 'Portal password', 'password', '', 'required autocomplete="current-password"')}<button class="show-pass" type="button" data-action="show-password" aria-label="Show password" aria-pressed="false">Show password</button><button class="primary full" type="submit">Sign in</button></form><button class="text-button" type="button" data-action="register">Register / request access</button><p class="fine">New accounts require administrator approval before sign-in.</p></div></main>`
+  root.innerHTML = `<main class="auth"><div class="auth-card">${authCardTop()}<p class="eyebrow">Private workspace</p><h1>Welcome back.</h1><p class="muted">Sign in with your approved email address. Sessions expire at midnight IST, so sign in again each day.</p><div id="feedback" class="feedback ${state.error ? 'error' : ''}" role="alert" tabindex="-1">${esc(state.error)}</div><form data-form="login">${input('email', 'Email address', 'email', '', 'required autocomplete="username"')}${input('password', 'Portal password', 'password', '', 'required autocomplete="current-password"')}<button class="show-pass" type="button" data-action="show-password" aria-label="Show password" aria-pressed="false">Show password</button><button class="primary full" type="submit">Sign in</button></form><button class="text-button" type="button" data-action="register">Register / request access</button><p class="fine">New accounts require administrator approval before sign-in.</p></div></main>`
 }
 function register() {
   glimpses.close()
@@ -565,10 +566,10 @@ function dashboard() {
         )
   }${section('Notes', `<div id="notes-items">${noteItems(s.notes, false)}</div>`)}</div></div>`
 }
-function targetProgress() {
-  const month = state.snapshot.today.slice(0, 7),
+function targetProgress(selectedMonth) {
+  const month = selectedMonth || state.snapshot.today.slice(0, 7),
     targets = arr(state.snapshot.targets).filter((t) => t.month === month)
-  if (!targets.length) return empty('No monthly client targets have been set.')
+  if (!targets.length) return empty(`No monthly client targets recorded for ${month}.`)
   return targets
     .map((target) => {
       const client = arr(state.snapshot.clients).find((c) => c.id === target.clientId)
@@ -576,13 +577,163 @@ function targetProgress() {
     })
     .join('')
 }
+
+function teamTaskDateRange(todayStr, filter) {
+  const unit = filter?.unit || 'month'
+  const offset = filter?.offset || 0
+  const baseStr = todayStr && /^\d{4}-\d{2}-\d{2}$/.test(todayStr) ? todayStr : new Date().toISOString().slice(0, 10)
+
+  if (unit === 'all') {
+    return {
+      unit: 'all',
+      offset: 0,
+      from: null,
+      to: null,
+      label: 'All tasks (all time)',
+      monthKey: baseStr.slice(0, 7),
+      isCurrent: true,
+    }
+  }
+
+  if (unit === 'month') {
+    const [y, m] = baseStr.slice(0, 7).split('-').map(Number)
+    const target = new Date(Date.UTC(y, m - 1 + offset, 1))
+    const targetY = target.getUTCFullYear()
+    const targetM = target.getUTCMonth() + 1
+    const monthKey = `${targetY}-${String(targetM).padStart(2, '0')}`
+    const from = `${monthKey}-01`
+    const lastDay = new Date(Date.UTC(targetY, targetM, 0)).getUTCDate()
+    const to = `${monthKey}-${String(lastDay).padStart(2, '0')}`
+    const monthNames = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ]
+    const label = `${monthNames[targetM - 1]} ${targetY}`
+    return {
+      unit: 'month',
+      offset,
+      from,
+      to,
+      label,
+      monthKey,
+      isCurrent: offset === 0,
+    }
+  }
+
+  if (unit === 'week') {
+    const baseDate = new Date(`${baseStr}T00:00:00Z`)
+    const dayOfWeek = (baseDate.getUTCDay() + 6) % 7 // Monday = 0, Sunday = 6
+    const mondayMs = baseDate.getTime() - dayOfWeek * 86_400_000 + offset * 7 * 86_400_000
+    const sundayMs = mondayMs + 6 * 86_400_000
+    const fromDate = new Date(mondayMs)
+    const toDate = new Date(sundayMs)
+    const from = fromDate.toISOString().slice(0, 10)
+    const to = toDate.toISOString().slice(0, 10)
+    const shortMonth = (d) =>
+      ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getUTCMonth()]
+    const label = `${shortMonth(fromDate)} ${fromDate.getUTCDate()} – ${shortMonth(toDate)} ${toDate.getUTCDate()}, ${toDate.getUTCFullYear()}`
+    return {
+      unit: 'week',
+      offset,
+      from,
+      to,
+      label,
+      monthKey: from.slice(0, 7),
+      isCurrent: offset === 0,
+    }
+  }
+
+  if (unit === 'day') {
+    const baseDate = new Date(`${baseStr}T00:00:00Z`)
+    const targetMs = baseDate.getTime() + offset * 86_400_000
+    const target = new Date(targetMs)
+    const dateStr = target.toISOString().slice(0, 10)
+    const shortMonth = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][
+      target.getUTCMonth()
+    ]
+    const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][target.getUTCDay()]
+    const label =
+      offset === 0
+        ? `Today · ${weekday}, ${shortMonth} ${target.getUTCDate()}, ${target.getUTCFullYear()}`
+        : `${weekday}, ${shortMonth} ${target.getUTCDate()}, ${target.getUTCFullYear()}`
+    return {
+      unit: 'day',
+      offset,
+      from: dateStr,
+      to: dateStr,
+      label,
+      monthKey: dateStr.slice(0, 7),
+      isCurrent: offset === 0,
+    }
+  }
+}
+
+function filterTasksByPeriod(taskList, range) {
+  if (!range || range.unit === 'all' || !range.from || !range.to) return taskList
+  const { from, to, isCurrent } = range
+  return taskList.filter((task) => {
+    const created = task.createdAt ? task.createdAt.slice(0, 10) : ''
+    const deadline = task.deadline ? task.deadline.slice(0, 10) : created
+    const completed = task.completedAt ? task.completedAt.slice(0, 10) : ''
+    if (deadline && deadline >= from && deadline <= to) return true
+    if (created && created >= from && created <= to) return true
+    if (completed && completed >= from && completed <= to) return true
+    if (isCurrent && ['Assigned', 'In-progress'].includes(task.state) && (!created || created <= to)) return true
+    return false
+  })
+}
+
+function teamTasksFilterBar(range, totalCount) {
+  const { unit, label, isCurrent } = range
+  const currentLabel = unit === 'day' ? 'Today' : unit === 'week' ? 'This week' : 'Current month'
+  return `<div class="team-filter-bar" role="region" aria-label="Team tasks period filter">
+    <div class="team-filter-scale" role="group" aria-label="Filter time range">
+      <button type="button" class="team-scale-btn ${unit === 'day' ? 'is-active' : ''}" data-action="team-filter-unit" data-unit="day" aria-pressed="${unit === 'day'}">Days</button>
+      <button type="button" class="team-scale-btn ${unit === 'week' ? 'is-active' : ''}" data-action="team-filter-unit" data-unit="week" aria-pressed="${unit === 'week'}">Weeks</button>
+      <button type="button" class="team-scale-btn ${unit === 'month' ? 'is-active' : ''}" data-action="team-filter-unit" data-unit="month" aria-pressed="${unit === 'month'}">Months</button>
+      <button type="button" class="team-scale-btn ${unit === 'all' ? 'is-active' : ''}" data-action="team-filter-unit" data-unit="all" aria-pressed="${unit === 'all'}">All</button>
+    </div>
+    ${
+      unit !== 'all'
+        ? `
+      <div class="team-filter-nav" role="group" aria-label="Navigate ${unit}s">
+        <button type="button" class="team-nav-btn" data-action="team-filter-prev" aria-label="Previous ${unit}">‹ Prev</button>
+        <button type="button" class="team-nav-btn ${isCurrent ? 'is-current' : ''}" data-action="team-filter-current">${currentLabel}</button>
+        <button type="button" class="team-nav-btn" data-action="team-filter-next" aria-label="Next ${unit}">Next ›</button>
+      </div>
+    `
+        : ''
+    }
+    <div class="team-filter-meta">
+      <span class="team-filter-period"><strong>${esc(label)}</strong></span>
+      <span class="team-filter-count tag">${totalCount} task${totalCount === 1 ? '' : 's'}</span>
+    </div>
+  </div>`
+}
+
 function tasks(teamView) {
-  const list = sortTasks(
-    arr(state.snapshot.tasks).filter((t) =>
-      teamView ? t.assigneeId !== state.user.id : t.assigneeId === state.user.id,
-    ),
-  )
-  return `<div class="page-heading"><div><p class="eyebrow">${teamView ? 'Shared visibility' : 'Assignments'}</p><h1>${teamView ? 'Team tasks' : 'My tasks'}</h1><p class="muted">${teamView ? 'Colleagues’ assignments are read-only.' : 'Working duration follows business hours and excludes approved absences.'}</p></div></div>${teamView ? section('Monthly client targets', targetProgress()) : ''}<div class="task-list">${list.map((t) => taskCard(t, teamView)).join('') || empty('No tasks to show.')}</div>`
+  state.teamFilter = state.teamFilter || { unit: 'month', offset: 0 }
+  const allViewTasks = tasksForView(arr(state.snapshot.tasks), state.user, teamView)
+  const range = teamView ? teamTaskDateRange(state.snapshot.today, state.teamFilter) : null
+  const filtered = teamView ? filterTasksByPeriod(allViewTasks, range) : allViewTasks
+  const list = sortTasks(filtered)
+  const guidance = teamView
+    ? admin()
+      ? 'All assignments are visible here, including your own.'
+      : 'Colleagues’ assignments are read-only.'
+    : 'Working duration follows business hours and excludes approved absences.'
+  const filterHtml = teamView ? teamTasksFilterBar(range, list.length) : ''
+  return `<div class="page-heading"><div><p class="eyebrow">${teamView ? 'Shared visibility' : 'Assignments'}</p><h1>${teamView ? 'Team tasks' : 'My tasks'}</h1><p class="muted">${guidance}</p></div></div>${filterHtml}${teamView ? section('Monthly client targets', targetProgress(range.monthKey)) : ''}<div class="task-list">${list.map((t) => taskCard(t, teamView)).join('') || empty('No tasks to show for this period.')}</div>`
 }
 function requests() {
   const s = state.snapshot
@@ -591,7 +742,7 @@ function requests() {
     : ''
   return `<div class="page-heading"><div><p class="eyebrow">Availability</p><h1>Time off & permissions</h1></div></div><div class="grid"><div>${section(
     'Requests',
-    arr(s.absences)
+    sortNewest(arr(s.absences))
       .map(
         (a) =>
           `<div class="list-item"><div class="split"><strong>${esc(a.kind === 'leave' ? 'Leave' : 'Hourly permission')} · ${personName(
@@ -603,8 +754,11 @@ function requests() {
   )}</div><div>${section('Request leave', `${requestGuidance}<form data-form="absence-leave">${input('start', 'First day', 'date', '', 'required')}${input('end', 'Last day', 'date', '', 'required')}${area('reason', 'Reason', '', 'required rows="3"')}<button class="primary" type="submit">Send leave request</button></form>`) + section('Request hourly permission', `${requestGuidance}<form data-form="absence-permission">${input('date', 'Date', 'date', '', 'required')}${input('startTime', 'From', 'time', '', 'required')}${input('endTime', 'To', 'time', '', 'required')}${area('reason', 'Reason', '', 'required rows="3"')}<button class="primary" type="submit">Send permission request</button></form>`) + (admin() ? section('Decisions', '<p class="muted">Approvals update eligible task working time. Deadlines change only when adjusted explicitly.</p>') : '')}</div></div>`
 }
 function notifications() {
-  const list = arr(state.snapshot.notifications)
-  return `<div class="page-heading"><div><p class="eyebrow">Messages</p><h1>Inbox</h1></div></div>${section('Notifications', `<div id="inbox-items" aria-live="polite">${list.map(notificationItem).join('') || empty('Your inbox is clear.')}</div>`)}${section('Device notifications', `<p class="muted">The inbox remains available if device notifications are denied or unavailable. Alerts can arrive when the portal is closed on supported devices, subject to browser and device settings.</p><p class="fine">${esc(devicePushGuidance({ navigator, window }).message)}</p><p id="push-status" role="status">${esc(state.push?.message || 'Checking browser support…')}</p><div id="push-controls" class="actions">${pushControls()}</div><p id="push-test-result" role="status" aria-live="polite"></p>`)}`
+  const list = sortNewest(state.snapshot.notifications)
+  const clearAllHeader = list.length
+    ? `<div class="inbox-toolbar">${btn('Clear all messages', 'notification-clear-all', '', 'small quiet')}</div>`
+    : ''
+  return `<div class="page-heading"><div><p class="eyebrow">Messages</p><h1>Inbox</h1></div></div>${section('Notifications', `${clearAllHeader}<div id="inbox-items" aria-live="polite">${list.map(notificationItem).join('') || empty('Your inbox is clear.')}</div>`)}${section('Device notifications', `<p class="muted">The inbox remains available if device notifications are denied or unavailable. Alerts can arrive when the portal is closed on supported devices, subject to browser and device settings.</p><p class="fine">${esc(devicePushGuidance({ navigator, window }).message)}</p><p id="push-status" role="status">${esc(state.push?.message || 'Checking browser support…')}</p><div id="push-controls" class="actions">${pushControls()}</div><p id="push-test-result" role="status" aria-live="polite"></p>`)}`
 }
 function pushControls() {
   const push = state.push
@@ -619,14 +773,14 @@ function syncPushUI() {
 }
 function notificationItem(n) {
   const type = notificationType(n)
-  return `<div class="list-item ${n.readAt ? '' : 'unread'}" data-notification-id="${esc(n.id)}" data-read-at="${esc(n.readAt || '')}"><div class="split"><strong>${esc(n.title)}</strong><small>${fmtDateTime(n.createdAt)}</small></div>${type ? `<small class="tag">${type}</small>` : ''}${inboxSender(n.sender) ? `<small class="sender-identity">${inboxSender(n.sender)}</small>` : ''}<p>${esc(n.text)}</p>${!n.readAt ? btn('Mark as read', 'notification-read', n.id, 'small') : ''}</div>`
+  return `<div class="list-item ${n.readAt ? '' : 'unread'}" data-notification-id="${esc(n.id)}" data-read-at="${esc(n.readAt || '')}"><div class="split"><strong>${esc(n.title)}</strong><small>${fmtDateTime(n.createdAt)}</small></div>${type ? `<small class="tag">${type}</small>` : ''}${inboxSender(n.sender) ? `<small class="sender-identity">${inboxSender(n.sender)}</small>` : ''}<p>${esc(n.text)}</p><div class="actions">${!n.readAt ? btn('Mark as read', 'notification-read', n.id, 'small') : ''}${btn('Clear', 'notification-clear', n.id, 'small quiet')}</div></div>`
 }
 function syncInbox(notifications) {
   syncInboxCount(notifications)
   if (state.view !== 'notifications') return
   const container = document.querySelector('#inbox-items')
   if (!container) return
-  const list = arr(notifications)
+  const list = sortNewest(notifications)
   const existing = new Map(
     [...container.querySelectorAll('[data-notification-id]')].map((node) => [node.dataset.notificationId, node]),
   )
@@ -805,10 +959,10 @@ function adminAccounts() {
 }
 function team() {
   if (!admin()) return ''
-  const registrations = arr(state.snapshot.registrations)
+  const registrations = sortNewest(state.snapshot.registrations)
   return `<div class="page-heading"><div><p class="eyebrow">People</p><h1>Team</h1></div></div>${section('Registration requests', registrations.map((r) => `<div class="list-item"><div class="split"><div><strong>${esc(r.name)}</strong><p>${esc(r.designation || 'Employee')} · ${esc(r.email)}</p><small>Requested ${fmtDateTime(r.createdAt)}${r.decidedAt ? ` · Reviewed ${fmtDateTime(r.decidedAt)}` : ''}</small></div>${statusTag(r.status)}</div>${r.status === 'Pending' ? `<div class="actions">${btn('Approve', 'registration-approve', r.id, 'small primary')}${btn('Reject', 'registration-reject', r.id, 'small')}</div>` : ''}</div>`).join('') || empty('No registration requests yet.'))}${section('Add employee', employeeForm())}${section(
     'Employees',
-    arr(state.snapshot.employees)
+    sortNewest(state.snapshot.employees)
       .filter((e) => e.role !== 'Admin')
       .map(
         (e) =>
@@ -873,7 +1027,7 @@ function notes() {
   )}`
 }
 function noteItems(notes, management) {
-  const list = management ? arr(notes) : arr(notes).slice(-5).reverse()
+  const list = management ? sortNewest(notes) : sortNewest(notes).slice(0, 5)
   return (
     list
       .map((n) => {
@@ -1012,9 +1166,13 @@ function clearTodayAttendance() {
   document.querySelectorAll('[data-today-duration]').forEach((node) => {
     node.textContent = node.textContent.replace(/^\d+h \d+m/, '0h 0m')
   })
+  document.querySelectorAll('[data-today-work]').forEach((node) => {
+    const value = node.querySelector('strong')
+    if (value) value.textContent = '0h 0m'
+  })
 }
 function syncTodayAttendance() {
-  if (state.snapshot?.serverNow && todayLoginExpired(state.snapshot.serverNow, Date.now() + state.serverOffset))
+  if (state.snapshot?.serverNow && todayLoginDayChanged(state.snapshot.serverNow, Date.now() + state.serverOffset))
     clearTodayAttendance()
 }
 function syncLiveAttendance() {
@@ -1029,11 +1187,28 @@ function syncLiveAttendance() {
   })
   document.querySelectorAll('[data-today-duration]').forEach((node) => {
     const person = people.get(node.dataset.todayDuration)
-    if (person)
-      node.textContent = node.textContent.replace(
-        /^\d+h \d+m/,
-        duration(Math.min(Number(person.todayLoginSeconds) || 0, 19 * 3600)),
-      )
+    if (person) {
+      const capHour =
+        Number(person.todayLoginCapHour) === 19
+          ? 19
+          : Number(person.todayLoginCapHour) === 17.5
+            ? 17.5
+            : Number(person.inProgress) > 0
+              ? 19
+              : 17.5
+      const capLimit = capHour * 3600
+      const capLabel = capHour === 19 ? 'capped 19:00' : 'capped 17:30'
+      node.textContent = node.textContent
+        .replace(/^\d+h \d+m/, duration(Math.min(Number(person.todayLoginSeconds) || 0, capLimit)))
+        .replace(/capped \d{2}:\d{2}/, capLabel)
+    }
+  })
+  document.querySelectorAll('[data-today-work]').forEach((node) => {
+    const person = people.get(node.dataset.todayWork)
+    if (person) {
+      const value = node.querySelector('strong')
+      if (value) value.textContent = duration(Number(person.todayWorkSeconds) || 0)
+    }
   })
   syncTodayAttendance()
 }
@@ -1204,9 +1379,9 @@ function syncTaskOrder(snapshot) {
     anchor = null
   if (state.view === 'tasks' || state.view === 'team-tasks') {
     container = document.querySelector('.task-list')
-    tasks = arr(snapshot.tasks).filter((t) =>
-      state.view === 'tasks' ? t.assigneeId === state.user.id : t.assigneeId !== state.user.id,
-    )
+    tasks = tasksForView(arr(snapshot.tasks), state.user, state.view === 'team-tasks')
+    if (state.view === 'team-tasks')
+      tasks = filterTasksByPeriod(tasks, teamTaskDateRange(snapshot.today, state.teamFilter))
     nodeFor = (card) => card
   } else if (state.view === 'dashboard' || state.view === 'reviews' || state.view === 'admin-tasks') {
     const heading =
@@ -1678,8 +1853,41 @@ async function handleAction(button) {
     )
     return
   }
+  if (action === 'team-filter-unit') {
+    state.teamFilter = state.teamFilter || { unit: 'month', offset: 0 }
+    state.teamFilter.unit = button.dataset.unit || 'month'
+    state.teamFilter.offset = 0
+    shell()
+    return
+  }
+  if (action === 'team-filter-prev') {
+    state.teamFilter = state.teamFilter || { unit: 'month', offset: 0 }
+    state.teamFilter.offset -= 1
+    shell()
+    return
+  }
+  if (action === 'team-filter-next') {
+    state.teamFilter = state.teamFilter || { unit: 'month', offset: 0 }
+    state.teamFilter.offset += 1
+    shell()
+    return
+  }
+  if (action === 'team-filter-current') {
+    state.teamFilter = state.teamFilter || { unit: 'month', offset: 0 }
+    state.teamFilter.offset = 0
+    shell()
+    return
+  }
   if (action === 'notification-read') {
     await runWrite({ type: 'notification.read', id }, button, 'Notification marked as read.')
+    return
+  }
+  if (action === 'notification-clear') {
+    await runWrite({ type: 'notification.clear', id }, button, 'Message cleared.')
+    return
+  }
+  if (action === 'notification-clear-all') {
+    await runWrite({ type: 'notification.clearAll' }, button, 'All messages cleared.')
     return
   }
   if (action === 'export') {

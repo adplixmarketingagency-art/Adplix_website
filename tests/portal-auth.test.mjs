@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { hashPassword, verifyPassword, tokenHash, cookie, validPassword } from '../src/portal/auth.mjs'
+import { hashPassword, verifyPassword, tokenHash, cookie, validPassword, sessionExpiryAt } from '../src/portal/auth.mjs'
 
 test('scrypt hashes are salted, versioned, and verified against correct password', async () => {
   const first = await hashPassword('correct horse battery staple'),
@@ -22,4 +22,11 @@ test('cookies require HTTPS except explicitly enabled loopback', () => {
   assert.doesNotThrow(() =>
     cookie('abc', new Request('http://localhost:8787/api/portal/login'), { PORTAL_ALLOW_HTTP_LOCAL: 'true' }),
   )
+})
+
+test('portal sessions expire at the next Asia/Kolkata midnight', () => {
+  const beforeMidnight = Date.parse('2026-10-12T18:29:59.000Z')
+  const midnight = Date.parse('2026-10-12T18:30:00.000Z')
+  assert.equal(sessionExpiryAt(beforeMidnight), midnight)
+  assert.equal(sessionExpiryAt(midnight), Date.parse('2026-10-13T18:30:00.000Z'))
 })

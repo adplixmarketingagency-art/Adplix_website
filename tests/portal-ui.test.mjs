@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { sortTasks, taskStateClass } from '../portal/task-presentation.mjs'
+import { sortTasks, taskStateClass, tasksForView } from '../portal/task-presentation.mjs'
 import { MAX_JPEG_BYTES, jpegSize, validatePhotoFile, imageFormat } from '../portal/photo.mjs'
-import { serverOffset, todayLoginExpired } from '../portal/today-login.mjs'
+import { serverOffset, todayLoginDayChanged, todayLoginExpired } from '../portal/today-login.mjs'
 
 test('task groups stay in work order and newest tasks lead each group', () => {
   const tasks = [
@@ -14,7 +14,7 @@ test('task groups stay in work order and newest tasks lead each group', () => {
   ]
   assert.deepEqual(
     sortTasks(tasks).map((task) => task.id),
-    ['newer', 'older', 'progress', 'completed', 'approved'],
+    ['progress', 'newer', 'older', 'completed', 'approved'],
   )
   assert.equal(tasks[0].id, 'approved')
 })
@@ -32,6 +32,28 @@ test('bad timestamps and ties preserve input order; overdue wins only for active
   assert.equal(taskStateClass({ state: 'In-progress', overdue: true }), 'task-state--overdue')
   assert.equal(taskStateClass({ state: 'Completed', overdue: true }), 'task-state--completed')
   assert.equal(taskStateClass({ state: 'Approved', overdue: true }), 'task-state--approved')
+
+  const mixedTasks = [
+    { id: 'completed', state: 'Completed', createdAt: '2026-10-10' },
+    { id: 'approved', state: 'Approved', createdAt: '2026-10-10' },
+    { id: 'in-progress', state: 'In-progress', createdAt: '2026-10-08' },
+    { id: 'overdue-task', state: 'In-progress', overdue: true, createdAt: '2026-10-01' },
+    { id: 'assigned', state: 'Assigned', createdAt: '2026-10-09' },
+  ]
+  assert.deepEqual(
+    sortTasks(mixedTasks).map((t) => t.id),
+    ['overdue-task', 'in-progress', 'assigned', 'completed', 'approved'],
+  )
+})
+
+test('team task visibility includes an Admin’s own work without changing Employee visibility', () => {
+  const tasks = [
+    { id: 'admin-task', assigneeId: 'admin' },
+    { id: 'employee-task', assigneeId: 'employee' },
+  ]
+  assert.deepEqual(tasksForView(tasks, { id: 'admin', role: 'Admin' }, true), tasks)
+  assert.deepEqual(tasksForView(tasks, { id: 'employee', role: 'Employee' }, true), [tasks[0]])
+  assert.deepEqual(tasksForView(tasks, { id: 'admin', role: 'Admin' }, false), [tasks[0]])
 })
 
 test('photo validation accepts only allowed image types under 5 MiB and exact-size JPEG payload', () => {
@@ -54,4 +76,7 @@ test('server-clock offset expires attendance at 19:00 Kolkata and on day rollove
   assert.equal(todayLoginExpired(snapshot, Date.parse('2026-10-09T13:29:59Z')), false)
   assert.equal(todayLoginExpired(snapshot, Date.parse('2026-10-09T13:30:00Z')), true)
   assert.equal(todayLoginExpired(snapshot, Date.parse('2026-10-09T18:30:00Z')), true)
+  assert.equal(todayLoginDayChanged(snapshot, Date.parse('2026-10-09T13:30:00Z')), false)
+  assert.equal(todayLoginDayChanged(snapshot, Date.parse('2026-10-09T13:30:01Z')), false)
+  assert.equal(todayLoginDayChanged(snapshot, Date.parse('2026-10-09T18:30:00Z')), true)
 })

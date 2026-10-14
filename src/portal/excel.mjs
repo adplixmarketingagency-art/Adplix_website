@@ -33,6 +33,14 @@ function sheet(rows) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${content}</sheetData></worksheet>`
 }
 
+const toHours = (sec) => (typeof sec === 'number' && Number.isFinite(sec) ? Math.round((sec / 3600) * 100) / 100 : 0)
+const toDuration = (sec) => {
+  const s = Math.max(0, Number(sec) || 0)
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+}
+const toPercent = (fraction) =>
+  typeof fraction === 'number' && Number.isFinite(fraction) ? `${(fraction * 100).toFixed(1)}%` : ''
+
 export function analyticsWorkbook(analytics, snapshot) {
   const s = analytics.summary
   const selectedIds = new Set(
@@ -44,26 +52,39 @@ export function analyticsWorkbook(analytics, snapshot) {
     (!analytics.filters.from || date >= analytics.filters.from) &&
     (!analytics.filters.to || date <= analytics.filters.to)
   const names = ['Summary', 'Team', 'Tasks', 'Daily Updates', 'Absences', 'Definitions']
+  const employeeNames = new Map((snapshot.employees || []).map((e) => [e.id, e.name || e.id]))
+  const clientNames = new Map((snapshot.clients || []).map((c) => [c.id, c.name || c.id]))
+
   const rows = [
     [
-      ['Metric', 'Value'],
-      ['Total tasks', s.total],
-      ['Assigned', s.assigned],
-      ['In-progress', s.inProgress],
-      ['Completed', s.completed],
-      ['Approved', s.approved],
-      ['Active work', s.activeWork],
-      ['Active rework', s.activeRework],
-      ['Login seconds', s.loginSeconds],
-      ['Login days', s.loginDays],
-      ['Overdue', s.overdue],
-      ['Work count', s.workCount],
-      ['Rework count', s.reworkCount],
-      ['On-time completion rate (fraction)', s.onTimeRate],
-      ['Task work seconds', s.workSeconds],
-      ['Median completed-task work seconds', s.medianWorkSeconds],
-      ['Business timezone', 'Asia/Kolkata'],
-      ['Generated at', new Date(snapshot.serverNow || Date.now()).toISOString()],
+      ['Metric', 'Value', 'Formatted / Units'],
+      ['Total tasks', s.total, `${s.total ?? 0} tasks`],
+      ['Assigned', s.assigned, `${s.assigned ?? 0} tasks`],
+      ['In-progress', s.inProgress, `${s.inProgress ?? 0} tasks`],
+      ['Completed', s.completed, `${s.completed ?? 0} tasks`],
+      ['Approved', s.approved, `${s.approved ?? 0} tasks`],
+      ['Active work', s.activeWork, `${s.activeWork ?? 0} tasks`],
+      ['Active rework', s.activeRework, `${s.activeRework ?? 0} tasks`],
+      ['Login hours', toHours(s.loginSeconds), `${toHours(s.loginSeconds)} hrs (${toDuration(s.loginSeconds)})`],
+      ['Login duration', toDuration(s.loginSeconds), 'Hours & minutes'],
+      ['Login days', s.loginDays, `${s.loginDays ?? 0} days`],
+      ['Login seconds', s.loginSeconds, 'Raw seconds'],
+      ['Overdue', s.overdue, `${s.overdue ?? 0} tasks`],
+      ['Work count', s.workCount, `${s.workCount ?? 0} iterations`],
+      ['Rework count', s.reworkCount, `${s.reworkCount ?? 0} iterations`],
+      ['On-time rate (%)', toPercent(s.onTimeRate), `${toPercent(s.onTimeRate)} on-time`],
+      ['On-time completion rate (fraction)', s.onTimeRate, 'Decimal fraction 0–1'],
+      ['Task work hours', toHours(s.workSeconds), `${toHours(s.workSeconds)} hrs (${toDuration(s.workSeconds)})`],
+      ['Task work duration', toDuration(s.workSeconds), 'Hours & minutes'],
+      ['Task work seconds', s.workSeconds, 'Raw seconds'],
+      [
+        'Median completed-task work hours',
+        toHours(s.medianWorkSeconds),
+        `${toHours(s.medianWorkSeconds)} hrs (${toDuration(s.medianWorkSeconds)})`,
+      ],
+      ['Median completed-task work seconds', s.medianWorkSeconds, 'Raw seconds'],
+      ['Business timezone', 'Asia/Kolkata', 'UTC+05:30'],
+      ['Generated at', new Date(snapshot.serverNow || Date.now()).toISOString(), 'ISO 8601'],
     ],
     [
       [
@@ -73,6 +94,8 @@ export function analyticsWorkbook(analytics, snapshot) {
         'Login date/time',
         'Login days',
         'Login seconds',
+        'Login hours (hrs)',
+        'Login duration (h m)',
         'Active work',
         'Active rework',
         'Assigned',
@@ -85,8 +108,12 @@ export function analyticsWorkbook(analytics, snapshot) {
         'Work count',
         'Rework count',
         'On-time rate (fraction)',
+        'On-time rate (%)',
         'Work seconds',
+        'Work hours (hrs)',
+        'Work duration (h m)',
         'Median completed-task seconds',
+        'Median completed-task hours',
         'Rejections',
         'Updates on time',
         'Updates late',
@@ -102,6 +129,8 @@ export function analyticsWorkbook(analytics, snapshot) {
           e.firstLoginAt,
           e.loginDays,
           e.loginSeconds,
+          toHours(e.loginSeconds),
+          toDuration(e.loginSeconds),
           e.activeWork,
           e.activeRework,
           e.assigned,
@@ -114,8 +143,12 @@ export function analyticsWorkbook(analytics, snapshot) {
           e.workCount,
           e.reworkCount,
           e.onTimeRate,
+          toPercent(e.onTimeRate),
           e.workSeconds,
+          toHours(e.workSeconds),
+          toDuration(e.workSeconds),
           e.medianWorkSeconds,
+          toHours(e.medianWorkSeconds),
           e.rejections,
           e.updateOnTime,
           e.updateLate,
@@ -135,6 +168,9 @@ export function analyticsWorkbook(analytics, snapshot) {
         'Completed at',
         'Work seconds',
         'Work hours',
+        'Work duration (h m)',
+        'Assignee name',
+        'Client name',
         'Overdue',
         'Rating',
         'Rating note',
@@ -149,8 +185,11 @@ export function analyticsWorkbook(analytics, snapshot) {
         t.deadline,
         t.completedAt,
         t.workSeconds,
-        t.workSeconds / 3600,
-        t.overdue ? 1 : 0,
+        toHours(t.workSeconds),
+        toDuration(t.workSeconds),
+        employeeNames.get(t.assigneeId) || t.assigneeId || 'Unassigned',
+        clientNames.get(t.clientId) || t.clientId || 'Internal',
+        t.overdue ? 'Yes' : 'No',
         t.rating ?? '',
         t.ratingNote ?? '',
       ]),
@@ -181,12 +220,16 @@ export function analyticsWorkbook(analytics, snapshot) {
         'Task creation business date for task counts; event business date for trends (even if task was created earlier); daily record date for updates; absences overlapping the selected dates.',
       ],
       [
-        'Work seconds',
-        'Per-task active working time excluding approved absences; concurrent task totals can overlap and are not attendance.',
+        'Work hours & duration',
+        'Active working duration in decimal hours (hours = seconds / 3600, rounded to 2 decimal places) and human-friendly duration (Xh Ym). Measured during business hours (Mon–Sat 10:00–13:00 and 14:00–19:00 Asia/Kolkata) and excludes approved absences. Concurrent task totals can overlap and are not attendance.',
       ],
       [
-        'Login duration',
-        'Elapsed time from a team member’s first login of each business date through the earlier of the current time or 19:00 Asia/Kolkata; one first-login record per team member per date.',
+        'Work seconds',
+        'Per-task active working time in raw seconds excluding approved absences; concurrent task totals can overlap and are not attendance.',
+      ],
+      [
+        'Login hours & duration',
+        'Attendance time in decimal hours and formatted duration (Xh Ym) from a team member’s first login of each business date through the earlier of the current time or 17:30 Asia/Kolkata (extended to 19:00 Asia/Kolkata when tasks are in progress); one first-login record per team member per date.',
       ],
       [
         'Current status segments',
@@ -194,11 +237,11 @@ export function analyticsWorkbook(analytics, snapshot) {
       ],
       [
         'On-time rate',
-        'Fraction from 0 to 1: tasks with a completion timestamp no later than deadline divided by tasks with a completion timestamp; multiply by 100 for percent.',
+        'Fraction from 0 to 1 and percentage: tasks with a completion timestamp no later than deadline divided by tasks with a completion timestamp; multiply by 100 for percent.',
       ],
       [
-        'Median completed-task seconds',
-        'Middle per-task working duration among tasks with a completion timestamp; mean of two middle values for an even count.',
+        'Median completed-task hours & seconds',
+        'Middle per-task working duration among tasks with a completion timestamp in hours and seconds; mean of two middle values for an even count.',
       ],
       [
         'Daily missing',

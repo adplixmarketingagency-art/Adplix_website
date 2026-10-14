@@ -14,15 +14,17 @@ import { buildAnalytics } from '../src/portal/analytics.mjs'
 const at = (day, time) => `${day}T${time}+05:30`
 const interval = (start, end) => [{ start, end }]
 
-test('employee login records are first-login-per-day and stop at 19:00', () => {
+test('employee login records are first-login-per-day, cap at 17:30 by default and extend to 19:00 when in progress', () => {
   const records = []
   loginRecordFor(records, 'e', '2026-10-05', at('2026-10-05', '10:15:00'))
   loginRecordFor(records, 'e', '2026-10-05', at('2026-10-05', '11:00:00'))
   loginRecordFor(records, 'e', '2026-10-06', at('2026-10-06', '10:05:00'))
   assert.equal(records.length, 2)
   assert.equal(records[0].firstLoginAt, '2026-10-05T04:45:00.000Z')
-  assert.equal(loginSeconds(records[0], at('2026-10-05', '18:00:00')), 27900)
-  assert.equal(loginSeconds(records[0], at('2026-10-05', '20:00:00')), 31500)
+  assert.equal(loginSeconds(records[0], at('2026-10-05', '18:00:00')), 26100)
+  assert.equal(loginSeconds(records[0], at('2026-10-05', '18:00:00'), true), 27900)
+  assert.equal(loginSeconds(records[0], at('2026-10-05', '20:00:00')), 26100)
+  assert.equal(loginSeconds(records[0], at('2026-10-05', '20:00:00'), true), 31500)
   assert.equal(loginSeconds(records[1], at('2026-10-06', '12:05:00')), 7200)
 })
 test('working calendar boundaries, lunch, Sunday and multiple days', () => {
@@ -99,6 +101,27 @@ test('transitions enforce ownership, role, reason and preserve audit intervals',
   assert.equal(task.events.length, 7)
   assert.equal(workingSeconds(task.intervals, []), 12600)
   assert.throws(() => transitionTask(task, owner, 'In-progress'), { status: 403 })
+})
+
+test('Admin-owned active tasks accrue business working time', () => {
+  const admin = { id: 'admin', role: 'Admin' }
+  const task = transitionTask(
+    {
+      id: 'admin-task',
+      assigneeId: admin.id,
+      state: 'Assigned',
+      deadline: at('2026-10-05', '16:00:00'),
+      intervals: [],
+      events: [],
+    },
+    admin,
+    'In-progress',
+    at('2026-10-05', '10:00:00'),
+  )
+  const decorated = decorateTask(task, [], at('2026-10-05', '12:00:00'))
+  assert.equal(task.state, 'In-progress')
+  assert.equal(task.intervals.at(-1).end, null)
+  assert.equal(decorated.workSeconds, 7200)
 })
 
 test('daily update deadline, Sunday, leave and permission', () => {

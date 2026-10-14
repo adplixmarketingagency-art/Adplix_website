@@ -112,7 +112,25 @@ test('analytics records first login and caps employee duration at the business c
   )
   assert.equal(report.employees[0].firstLoginAt, '2026-10-05T04:45:00.000Z')
   assert.equal(report.employees[0].loginDays, 1)
-  assert.equal(report.employees[0].loginSeconds, 31500)
+  assert.equal(report.employees[0].loginSeconds, 26100)
+  // When work is still in-progress past 17:30, login time extends up to 19:00 (31500 seconds)
+  const inProgressReport = buildAnalytics(
+    {
+      ...snapshot,
+      tasks: [
+        {
+          ...snapshot.tasks[0],
+          state: 'In-progress',
+          intervals: [{ start: '2026-10-05T04:30:00Z', end: '2026-10-05T13:30:00Z' }],
+        },
+        snapshot.tasks[1],
+      ],
+      loginRecords: [{ employeeId: 'e', date: '2026-10-05', firstLoginAt: '2026-10-05T04:45:00.000Z' }],
+    },
+    { from: '2026-10-05', to: '2026-10-05' },
+    '2026-10-05T14:00:00Z',
+  )
+  assert.equal(inProgressReport.employees[0].loginSeconds, 31500)
 })
 
 test('historical daily update status evaluates through the 19:00 business close', () => {
