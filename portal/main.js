@@ -4,6 +4,7 @@ import './styles.css'
 import './brand.css'
 import './analytics-charts.css'
 import './ui.css'
+import './planning.css'
 import './profile-glimpse.css'
 import './photo-crop.css'
 import { portalBrand } from './brand.mjs'
@@ -13,6 +14,8 @@ import { parseJsonResponse } from './http.mjs'
 import { dailyStatusDisplay } from './daily-status.mjs'
 import { sortTasks, taskStateClass, tasksForView } from './task-presentation.mjs'
 import { sortNewest } from './list-sorting.mjs'
+import { groupTasksByMonth, planningSignature, shiftMonth } from './planning.mjs'
+import { renderCalendar, renderAssignmentGroups } from './planning-view.mjs'
 import { preparePhoto, PROFILE_PHOTO_SIZE, savedPhotoFile } from './photo.mjs'
 import { cropPhoto } from './photo-crop-dialog.mjs'
 import { serverOffset, todayLoginDayChanged } from './today-login.mjs'
@@ -43,6 +46,10 @@ const state = {
   snapshot: null,
   view: '',
   calendarMonth: null,
+  calendarDate: null,
+  calendarFilters: {},
+  calendarSummary: '',
+  assignmentMonth: 'all',
   busy: false,
   drawer: false,
   navScrollTop: 0,
@@ -313,6 +320,7 @@ async function request(path, options = {}) {
       state.user = null
       state.csrf = ''
       state.snapshot = null
+      resetPlanning()
       state.push = null
       state.analytics = null
       state.analyticsSequence++
@@ -514,7 +522,7 @@ function taskCard(task, readonly = false) {
     ? `<div class="task-rating" aria-label="Rating ${esc(task.rating)} out of 5">★ ${esc(task.rating)}/5${task.ratingNote ? ` · ${esc(task.ratingNote)}` : ''}</div>`
     : ''
   const tone = taskStateClass(task)
-  return `<article class="task-card ${tone} ${overdue ? 'overdue' : ''}" data-task-id="${esc(task.id)}"><div class="task-top"><span class="eyebrow">${esc(task.jobFunction || 'Task')} · ${esc(client?.name || 'No client')}</span><span class="tag ${tone}">${esc(task.state || 'Pending')}</span></div><h3>${esc(task.title)}</h3>${task.description ? `<p>${esc(task.description)}</p>` : ''}<div class="task-meta"><span><strong class="overdue-label" ${overdue ? '' : 'hidden'}>Overdue · </strong>Due ${fmtDateTime(task.deadline)}</span><span class="task-duration">Working time ${duration(task.workSeconds)}</span>${readonly || admin() || mine ? `<span>${personName(person, 'Former employee')}</span>` : ''}</div>${rating}${actions ? `<div class="actions">${actions}</div>` : ''}</article>`
+  return `<article class="task-card ${tone} ${overdue ? 'overdue' : ''}" data-task-id="${esc(task.id)}" data-readonly="${readonly}"><div class="task-top"><span class="eyebrow">${esc(task.jobFunction || 'Task')} · ${esc(client?.name || 'No client')}</span><span class="tag ${tone}">${esc(task.state || 'Pending')}</span></div><h3>${esc(task.title)}</h3>${task.description ? `<p>${esc(task.description)}</p>` : ''}<div class="task-meta"><span><strong class="overdue-label" ${overdue ? '' : 'hidden'}>Overdue · </strong>Due ${fmtDateTime(task.deadline)}</span><span class="task-duration">Working time ${duration(task.workSeconds)}</span>${readonly || admin() || mine ? `<span>${personName(person, 'Former employee')}</span>` : ''}</div>${rating}${actions ? `<div class="actions">${actions}</div>` : ''}</article>`
 }
 function dashboard() {
   const s = state.snapshot,
@@ -811,37 +819,72 @@ function syncInbox(notifications) {
   if (!list.length && !emptyNode) container.insertAdjacentHTML('beforeend', empty('Your inbox is clear.'))
 }
 function calendar() {
-  const events = arr(state.snapshot.calendarEvents)
-  const monthKey = state.calendarMonth || state.snapshot.today.slice(0, 7),
-    [year, monthNumber] = monthKey.split('-').map(Number),
-    month = monthNumber - 1,
-    first = new Date(Date.UTC(year, month, 1)),
-    days = new Date(Date.UTC(year, month + 1, 0)).getUTCDate(),
-    offset = (first.getUTCDay() + 6) % 7
-  const eventDays = new Set(
-    events.filter((e) => e.date?.startsWith(`${monthKey}-`)).map((e) => Number(e.date.slice(-2))),
-  )
-  const cells = [...Array(offset).fill(''), ...Array.from({ length: days }, (_, i) => String(i + 1))]
-    .map((day) =>
-      day
-        ? `<span class="calendar-day ${eventDays.has(Number(day)) ? 'has-event' : ''} ${`${monthKey}-${day.padStart(2, '0')}` === state.snapshot.today ? 'today' : ''}">${day}</span>`
-        : '<span class="calendar-day blank" aria-hidden="true"></span>',
+  return `<div class="page-heading"><div><p class="eyebrow">Planning</p><h1>Calendar</h1><p class="muted">Task deadlines and shared events, together. All dates and times use IST.</p></div>${admin() ? btn('Add event', 'event-new', '', 'primary') : ''}</div><div id="calendar-planning">${calendarContent()}</div>`
+}
+function calendarContent() {
+  const month = state.calendarMonth || state.snapshot.today.slice(0, 7)
+  const selectedDate =
+    state.calendarDate || (month === state.snapshot.today.slice(0, 7) ? state.snapshot.today : `${month}-01`)
+  return renderCalendar({
+    snapshot: state.snapshot,
+    user: state.user,
+    month,
+    selectedDate,
+    filters: state.calendarFilters,
+    summaryView: state.calendarSummary,
+  })
+}
+function assignmentContent() {
+  const groups = groupTasksByMonth(arr(state.snapshot.tasks), state.snapshot.today, sortTasks)
+  if (state.assignmentMonth !== 'all' && !groups.some((group) => group.month === state.assignmentMonth))
+    state.assignmentMonth = 'all'
+  const choices = groups
+    .map(
+      (group) =>
+        `<option value="${esc(group.month)}" ${state.assignmentMonth === group.month ? 'selected' : ''}>${esc(group.label)} (${group.tasks.length})</option>`,
     )
     .join('')
-  const todays = events.filter((e) => e.date === state.snapshot.today)
-  const eventRow = (e) =>
-    `<div class="list-item"><div class="split"><strong>${esc(e.title)}</strong><small>${esc(e.date)} · ${e.time ? esc(e.time) : 'All day'}</small></div><p>${esc(e.description || '')}</p>${admin() ? `<div class="actions">${btn('Edit', 'event-edit', e.id, 'small')}${btn('Delete', 'event-delete', e.id, 'small danger')}</div>` : ''}</div>`
-  return `<div class="page-heading"><div><p class="eyebrow">Planning</p><h1>Calendar</h1><p class="muted">Shared events and today’s schedule.</p></div>${admin() ? btn('Add event', 'event-new', '', 'primary') : ''}</div><div class="calendar-month"><div class="calendar-month-head"><h2>${new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(first)}</h2><div class="actions">${btn('Previous month', 'calendar-prev', '', 'small')}${btn('Next month', 'calendar-next', '', 'small')}</div></div><div class="calendar-weekdays"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div><div class="calendar-days">${cells}</div></div>${section("Today's events", todays.map(eventRow).join('') || empty('No events today.'))}${section(
-    'All events',
-    events
-      .slice()
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map(eventRow)
-      .join('') || empty('No events yet.'),
-  )}`
+  return `<div class="assignment-toolbar"><label class="field"><span>Deadline month · IST</span><select data-assignment-filter aria-label="Deadline month · IST"><option value="all" ${state.assignmentMonth === 'all' ? 'selected' : ''}>All months</option>${choices}</select></label><p class="fine">Overdue → In-progress → Assigned → Completed<span>Approved tasks appear last. Current month first, then newest months.</span></p></div><div id="assignment-groups">${renderAssignmentGroups(state.snapshot, state.assignmentMonth, taskCard, btn)}</div>`
+}
+function resetPlanning() {
+  state.calendarMonth = null
+  state.calendarDate = null
+  state.calendarFilters = {}
+  state.calendarSummary = ''
+  state.assignmentMonth = 'all'
+}
+function redrawPlanning(region, html, focusTarget) {
+  if (!region) return
+  const focused = region.contains(document.activeElement) ? document.activeElement : null
+  const focus =
+    focusTarget ||
+    (focused
+      ? {
+          action: focused.dataset.action,
+          id: focused.dataset.id,
+          calendarFilter: focused.dataset.calendarFilter,
+          assignmentFilter: focused.hasAttribute('data-assignment-filter'),
+        }
+      : null)
+  region.innerHTML = html
+  if (focus) {
+    const target = [...region.querySelectorAll('button,select')].find((node) =>
+      focus.calendarFilter
+        ? node.dataset.calendarFilter === focus.calendarFilter
+        : focus.assignmentFilter
+          ? node.hasAttribute('data-assignment-filter')
+          : node.dataset.action === focus.action && node.dataset.id === focus.id,
+    )
+    target?.focus({ preventScroll: true })
+  }
+}
+function syncPlanning(previousSnapshot, snapshot) {
+  if (planningSignature(previousSnapshot) === planningSignature(snapshot)) return
+  if (state.view === 'calendar') redrawPlanning(document.querySelector('#calendar-planning'), calendarContent())
+  if (state.view === 'admin-tasks') redrawPlanning(document.querySelector('#assignment-planning'), assignmentContent())
 }
 function eventForm(event) {
-  return `<form data-form="event" data-id="${esc(event?.id || '')}"><div class="form-grid">${input('title', 'Event title', 'text', event?.title || '', 'required maxlength="200"')}${input('date', 'Date', 'date', event?.date || state.snapshot.today, 'required')}${input('time', 'Time (optional)', 'time', event?.time || '')}</div>${area('description', 'Details', event?.description || '', 'maxlength="1000" rows="3"')}<button class="primary" type="submit">${event ? 'Save event' : 'Add event'}</button></form>`
+  return `<form data-form="event" data-id="${esc(event?.id || '')}"><div class="form-grid">${input('title', 'Event title', 'text', event?.title || '', 'required maxlength="200"')}${input('date', 'Date', 'date', event?.date || state.calendarDate || state.snapshot.today, 'required')}${input('time', 'Time (optional) · IST', 'time', event?.time || '')}</div>${area('description', 'Details', event?.description || '', 'maxlength="1000" rows="3"')}<button class="primary" type="submit">${event ? 'Save event' : 'Add event'}</button></form>`
 }
 function profile() {
   const p = state.user.profile || {}
@@ -999,13 +1042,8 @@ function adminTasks() {
   const clients = arr(s.clients).filter((c) => c.active)
   const clientOptions = clients.map((c) => ({ ...c, name: `${c.name} · ${serviceTypeLabel(c.serviceType)}` }))
   return `<div class="page-heading"><div><p class="eyebrow">Work management</p><h1>Assignments</h1></div></div>${section('Assign a task', `<form data-form="task"><div class="form-grid">${input('title', 'Task title', 'text', '', 'required maxlength="200"')}${select('assigneeId', 'Assigned employee / admin', active)}${select('clientId', 'Client', clientOptions)}<label class="field"><span>Job function</span><select name="jobFunction" required disabled><option value="">Select an assignee first</option></select><small id="function-help" class="fine">Every active employee and admin can receive any work type.</small></label>${input('deadline', 'Deadline · Asia/Kolkata (IST)', 'datetime-local', '', 'required')}<label class="field"><span>Priority</span><select name="priority"><option>Normal</option><option>High</option><option>Low</option></select></label></div>${area('description', 'Description', '', 'rows="3"')}<button class="primary" type="submit">Create task</button></form>`)}${section(
-    'All tasks',
-    sortTasks(arr(s.tasks))
-      .map(
-        (t) =>
-          `<div>${taskCard(t)}<div class="deadline-action">${btn('Adjust deadline', 'deadline', t.id, 'small')}</div></div>`,
-      )
-      .join('') || empty('No tasks assigned yet.'),
+    'Assignments by month',
+    `<div id="assignment-planning">${assignmentContent()}</div>`,
   )}`
 }
 function reviews() {
@@ -1332,7 +1370,7 @@ async function pollSnapshot() {
       if (!task) return
       if (card.querySelector('.task-top .tag')?.textContent !== task.state && !card.contains(document.activeElement)) {
         const template = document.createElement('template')
-        template.innerHTML = taskCard(task, state.view === 'team-tasks')
+        template.innerHTML = taskCard(task, card.dataset.readonly === 'true')
         card.replaceWith(template.content.firstElementChild)
         return
       }
@@ -1359,6 +1397,7 @@ async function pollSnapshot() {
       }
     })
     syncTaskOrder(snapshot)
+    syncPlanning(previousSnapshot, snapshot)
     syncInbox(snapshot.notifications)
     syncNotes(snapshot.notes)
     glimpses.sync()
@@ -1383,15 +1422,8 @@ function syncTaskOrder(snapshot) {
     if (state.view === 'team-tasks')
       tasks = filterTasksByPeriod(tasks, teamTaskDateRange(snapshot.today, state.teamFilter))
     nodeFor = (card) => card
-  } else if (state.view === 'dashboard' || state.view === 'reviews' || state.view === 'admin-tasks') {
-    const heading =
-      state.view === 'dashboard'
-        ? admin()
-          ? 'Review queue'
-          : 'My current tasks'
-        : state.view === 'reviews'
-          ? 'Awaiting approval'
-          : 'All tasks'
+  } else if (state.view === 'dashboard' || state.view === 'reviews') {
+    const heading = state.view === 'dashboard' ? (admin() ? 'Review queue' : 'My current tasks') : 'Awaiting approval'
     container = [...document.querySelectorAll('.panel')].find(
       (panel) => panel.querySelector('.panel-head h2')?.textContent === heading,
     )
@@ -1402,10 +1434,8 @@ function syncTaskOrder(snapshot) {
               ? arr(snapshot.tasks).filter((t) => t.state === 'Completed')
               : arr(snapshot.tasks).filter((t) => t.assigneeId === state.user.id && t.state !== 'Approved'),
           ).slice(0, 6)
-        : state.view === 'reviews'
-          ? arr(snapshot.tasks).filter((t) => t.state === 'Completed')
-          : arr(snapshot.tasks)
-    nodeFor = (card) => (state.view === 'admin-tasks' ? card.parentElement : card)
+        : arr(snapshot.tasks).filter((t) => t.state === 'Completed')
+    nodeFor = (card) => card
     anchor = container?.querySelector('.panel-head')
   } else return
   if (!container || container.contains(document.activeElement)) return
@@ -1422,10 +1452,7 @@ function syncTaskOrder(snapshot) {
     let node = existing.get(id)
     if (!node) {
       const template = document.createElement('template')
-      template.innerHTML =
-        state.view === 'admin-tasks'
-          ? `<div>${taskCard(task)}<div class="deadline-action">${btn('Adjust deadline', 'deadline', task.id, 'small')}</div></div>`
-          : taskCard(task, state.view === 'team-tasks')
+      template.innerHTML = taskCard(task, state.view === 'team-tasks')
       node = template.content.firstElementChild
     }
     const next = index + 1 < sorted.length ? existing.get(String(sorted[index + 1].id)) : null
@@ -1439,8 +1466,8 @@ function syncTaskOrder(snapshot) {
     )
 }
 function modal(title, body) {
-  priorFocus = document.activeElement
   const d = document.querySelector('#modal')
+  if (!d.open) priorFocus = document.activeElement
   document.querySelector('#modal-body').innerHTML =
     `<h2 id="modal-title">${esc(title)}</h2><div id="modal-feedback" class="feedback" role="alert" tabindex="-1"></div>${body}`
   d.showModal()
@@ -1449,7 +1476,15 @@ function modal(title, body) {
 function closeModal() {
   const d = document.querySelector('#modal')
   if (d?.open) d.close()
-  priorFocus?.focus()
+  restoreModalFocus()
+}
+function restoreModalFocus() {
+  if (priorFocus?.isConnected) return priorFocus.focus({ preventScroll: true })
+  if (!priorFocus?.dataset.action) return
+  const target = [...root.querySelectorAll('[data-action]')].find(
+    (node) => node.dataset.action === priorFocus.dataset.action && node.dataset.id === priorFocus.dataset.id,
+  )
+  target?.focus({ preventScroll: true })
 }
 async function refresh(message) {
   if (!(await load())) return
@@ -1476,6 +1511,7 @@ async function runWrite(payload, button, message, close = false) {
     if (state.user?.id !== user || state.csrf !== csrf) return
     if (close) closeModal()
     await refresh(message)
+    if (close) restoreModalFocus()
   } catch (err) {
     if (!err.sessionExpired && state.user?.id === user && state.csrf === csrf) {
       flash(err.message, true)
@@ -1632,6 +1668,7 @@ async function handleAction(button) {
       state.user = null
       state.csrf = ''
       state.snapshot = null
+      resetPlanning()
       state.push = null
       state.analytics = null
       state.analyticsQuickRange = ''
@@ -1688,10 +1725,36 @@ async function handleAction(button) {
     return
   }
   if (action === 'calendar-prev' || action === 'calendar-next') {
-    const base = new Date(`${state.calendarMonth || state.snapshot.today.slice(0, 7)}-01T00:00:00Z`)
-    base.setUTCMonth(base.getUTCMonth() + (action === 'calendar-next' ? 1 : -1))
-    state.calendarMonth = base.toISOString().slice(0, 7)
-    shell()
+    state.calendarMonth = shiftMonth(
+      state.calendarMonth || state.snapshot.today.slice(0, 7),
+      action === 'calendar-next' ? 1 : -1,
+    )
+    state.calendarDate = `${state.calendarMonth}-01`
+    state.calendarSummary = ''
+    redrawPlanning(document.querySelector('#calendar-planning'), calendarContent())
+    return
+  }
+  if (action === 'calendar-today' || action === 'calendar-day') {
+    state.calendarDate = action === 'calendar-today' ? state.snapshot.today : id
+    state.calendarMonth = state.calendarDate.slice(0, 7)
+    state.calendarSummary = ''
+    redrawPlanning(document.querySelector('#calendar-planning'), calendarContent())
+    return
+  }
+  if (action === 'calendar-summary') {
+    if (!['overdue', 'today', 'next'].includes(id)) return
+    state.calendarSummary = id
+    redrawPlanning(document.querySelector('#calendar-planning'), calendarContent())
+    return
+  }
+  if (action === 'calendar-task') {
+    const task = arr(state.snapshot.tasks).find((task) => String(task.id) === id)
+    if (!task) return
+    const readonly = !admin() && task.assigneeId !== state.user.id
+    modal(
+      'Task details',
+      `${taskCard(task, readonly)}<p class="fine">Priority: ${esc(task.priority || 'Normal')} · Deadline in IST${readonly ? ' · Read-only team task' : ''}</p>${admin() ? btn('Adjust deadline', 'deadline', task.id, 'small') : ''}${btn('Close', 'close-modal', '', 'small')}`,
+    )
     return
   }
   if (action === 'target-edit') {
@@ -1811,6 +1874,7 @@ async function handleAction(button) {
     return
   }
   if (action === 'deadline') {
+    if (!admin()) return
     const t = arr(state.snapshot.tasks).find((x) => x.id === id)
     if (t)
       modal(
@@ -1850,6 +1914,7 @@ async function handleAction(button) {
       { type: 'task.transition', id, state: next, version: Number(button.dataset.version) },
       button,
       `Task moved to ${next}.`,
+      Boolean(button.closest('dialog')),
     )
     return
   }
@@ -2290,6 +2355,19 @@ root.addEventListener('click', (e) => {
   }
 })
 root.addEventListener('change', (e) => {
+  if (e.target.hasAttribute('data-calendar-filter')) {
+    const key = e.target.dataset.calendarFilter
+    if (!['scope', 'status', 'clientId', 'assigneeId'].includes(key)) return
+    if (key === 'assigneeId' && !admin()) return
+    state.calendarFilters[key] = e.target.value
+    redrawPlanning(document.querySelector('#calendar-planning'), calendarContent())
+    return
+  }
+  if (e.target.hasAttribute('data-assignment-filter')) {
+    state.assignmentMonth = e.target.value
+    redrawPlanning(document.querySelector('#assignment-planning'), assignmentContent())
+    return
+  }
   if (e.target.id === 'profile-photo-input') {
     const file = e.target.files?.[0]
     if (file) stagePhoto(file)
@@ -2313,6 +2391,21 @@ root.addEventListener('change', (e) => {
   }
 })
 root.addEventListener('keydown', (e) => {
+  const day = e.target.closest('[data-action="calendar-day"]')
+  const offsets = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }
+  if (day && offsets[e.key]) {
+    e.preventDefault()
+    const date = new Date(`${day.dataset.id}T00:00:00Z`)
+    date.setUTCDate(date.getUTCDate() + offsets[e.key])
+    state.calendarDate = date.toISOString().slice(0, 10)
+    state.calendarMonth = state.calendarDate.slice(0, 7)
+    state.calendarSummary = ''
+    redrawPlanning(document.querySelector('#calendar-planning'), calendarContent(), {
+      action: 'calendar-day',
+      id: state.calendarDate,
+    })
+    return
+  }
   if (!state.drawer) return
   if (e.key === 'Escape') {
     e.preventDefault()
@@ -2337,7 +2430,7 @@ root.addEventListener('keydown', (e) => {
 root.addEventListener(
   'close',
   (e) => {
-    if (e.target.id === 'modal') priorFocus?.focus()
+    if (e.target.id === 'modal') restoreModalFocus()
   },
   true,
 )

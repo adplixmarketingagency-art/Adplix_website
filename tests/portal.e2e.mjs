@@ -12,6 +12,7 @@ import { hashPassword } from '../src/portal/auth.mjs'
 import { businessDate } from '../src/portal/domain.mjs'
 import { analyticsPresetFilters } from '../portal/analytics-filters.mjs'
 import { verifyProfilePhoto } from './portal-photo-browser.mjs'
+import { verifyPlanning } from './portal-planning-browser.mjs'
 
 // Isolated synthetic accounts and a private local D1 instance. Never use production credentials here.
 if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('Run browser verification with Node 22+')
@@ -96,11 +97,20 @@ async function checkProgress(page, done) {
   await expect(row.locator('.assignment-slot.pending')).toHaveCount(3 - done)
 }
 async function accessibility(page, name) {
+  // Audit the painted state, not a partially recalculated theme or font switch.
+  await page.evaluate(async () => {
+    await document.fonts.ready
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  })
   const { violations } = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
     .analyze()
   assert.deepEqual(
-    violations.map((v) => ({ id: v.id, impact: v.impact, targets: v.nodes.map((n) => n.target) })),
+    violations.map((v) => ({
+      id: v.id,
+      impact: v.impact,
+      nodes: v.nodes.map((node) => ({ target: node.target, failure: node.failureSummary })),
+    })),
     [],
     `${name}: accessibility violations`,
   )
@@ -268,6 +278,7 @@ try {
   await expect(adminPage.getByRole('button', { name: 'Switch to dark theme', exact: true })).toBeVisible()
   await adminPage.getByRole('button', { name: 'Switch to dark theme', exact: true }).click()
   await expect(adminPage.locator('html')).toHaveAttribute('data-portal-theme', 'dark')
+  await expect(adminPage.locator('.identity-meta')).toHaveCSS('color', 'rgb(222, 214, 204)')
   await accessibility(adminPage, 'Admin dark theme')
   await expect(adminPage.getByRole('button', { name: 'Switch to light theme', exact: true })).toBeVisible()
   await adminPage.getByRole('button', { name: 'Switch to light theme', exact: true }).click()
@@ -992,6 +1003,7 @@ try {
   await employeePage.setViewportSize({ width: 768, height: 1024 })
   await noOverflow(employeePage)
   await employeePage.setViewportSize({ width: 1440, height: 1000 })
+  await verifyPlanning({ adminPage, employeePage, navigate, accessibility, noOverflow })
   await navigate(employeePage, 'Time off')
   const rejectedLeave = employeePage.locator('[data-form="absence-leave"]')
   await rejectedLeave.getByLabel('First day').fill(tomorrow)

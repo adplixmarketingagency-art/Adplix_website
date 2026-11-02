@@ -1,0 +1,330 @@
+.planning-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.planning-summary {
+  display: grid;
+  gap: 7px;
+  padding: 18px;
+  text-align: left;
+  border-color: var(--line);
+}
+.planning-summary strong {
+  font-size: 1.8rem;
+  line-height: 1.1;
+}
+.planning-summary small {
+  color: var(--muted);
+  font-weight: 400;
+  line-height: 1.5;
+}
+.planning-summary.has-overdue,
+.planning-summary[aria-pressed='true'] {
+  border-color: var(--red);
+}
+.planning-summary[aria-pressed='true'] {
+  background: var(--red-soft);
+}
+.planning-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.planning-filters .field {
+  flex: 1 1 170px;
+  min-width: 0;
+  margin: 0;
+}
+.planning-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(270px, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+.planning-month,
+.planning-agenda {
+  min-width: 0;
+}
+.planning-month .calendar-month-head {
+  flex-wrap: wrap;
+}
+.planning-month h2,
+.planning-month .fine {
+  margin: 0;
+}
+.planning-month .fine {
+  margin-top: 5px;
+}
+.planning-month .actions {
+  flex-wrap: nowrap;
+}
+.planning-month .actions button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.planning-month .actions svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+.planning-month .calendar-weekdays {
+  gap: 5px;
+}
+.planning-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 8px;
+}
+.planning-day {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 105px;
+  padding: 8px 6px;
+  gap: 5px;
+  text-align: left;
+  border-color: var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+.planning-day-number {
+  align-self: flex-start;
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  min-height: 24px;
+}
+.planning-day.is-today .planning-day-number {
+  border-radius: 50%;
+  background: var(--red);
+  color: white;
+}
+.planning-day.is-selected {
+  border-color: var(--red);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--red);
+}
+.planning-day-count,
+.planning-more {
+  color: var(--muted);
+  font-size: 0.65rem;
+  line-height: 1.35;
+  font-weight: 500;
+}
+.planning-day-entries {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.planning-day-signals {
+  display: none;
+}
+.planning-day-entry {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+.planning-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--planning-tone, var(--muted));
+}
+#calendar-planning .task-state--overdue {
+  --planning-tone: #b53329;
+}
+#calendar-planning .task-state--in-progress {
+  --planning-tone: #996915;
+}
+#calendar-planning .task-state--assigned {
+  --planning-tone: #427cb8;
+}
+#calendar-planning .task-state--completed {
+  --planning-tone: #3e9863;
+}
+#calendar-planning .task-state--approved {
+  --planning-tone: #8b76a5;
+}
+.planning-shared-event {
+  --planning-tone: #52736b;
+}
+.planning-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.planning-agenda-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.planning-task-row,
+.planning-event-row {
+  display: grid;
+  gap: 8px;
+  padding: 15px;
+  min-width: 0;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  overflow-wrap: anywhere;
+}
+.planning-task-row {
+  box-shadow: inset 3px 0 var(--planning-tone);
+}
+.planning-task-row strong,
+.planning-event-row h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+.planning-event-row p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.planning-row-time,
+.planning-row-meta {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 450;
+  line-height: 1.5;
+}
+.planning-status {
+  color: var(--ink);
+  font-weight: 650;
+}
+.planning-agenda-help {
+  margin-top: 20px;
+  line-height: 1.6;
+}
+.assignment-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  padding-bottom: 18px;
+}
+.assignment-toolbar .field {
+  flex: 0 1 280px;
+  min-width: 0;
+  margin: 0;
+}
+.assignment-toolbar .fine {
+  line-height: 1.7;
+}
+.assignment-toolbar .fine span {
+  display: block;
+}
+.assignment-month + .assignment-month {
+  margin-top: 28px;
+}
+.assignment-month-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 14px;
+}
+.assignment-month-heading h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.assignment-month-tasks {
+  display: grid;
+  gap: 14px;
+}
+html[data-portal-theme='dark'] #calendar-planning .task-state--overdue {
+  --planning-tone: #e36b5a;
+}
+html[data-portal-theme='dark'] #calendar-planning .task-state--in-progress {
+  --planning-tone: #d49d3a;
+}
+html[data-portal-theme='dark'] #calendar-planning .task-state--assigned {
+  --planning-tone: #6e9dcc;
+}
+html[data-portal-theme='dark'] #calendar-planning .task-state--completed {
+  --planning-tone: #62b985;
+}
+html[data-portal-theme='dark'] #calendar-planning .task-state--approved {
+  --planning-tone: #aa91c6;
+}
+html[data-portal-theme='dark'] .planning-shared-event {
+  --planning-tone: #83b9a9;
+}
+html[data-portal-theme='dark'] .planning-day.is-today .planning-day-number {
+  color: #201e1c;
+}
+@media (max-width: 1150px) {
+  .planning-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .planning-summary-grid {
+    gap: 6px;
+  }
+  .planning-summary {
+    padding: 12px 8px;
+    font-size: 0.78rem;
+  }
+  .planning-summary small {
+    font-size: 0.66rem;
+  }
+  .planning-filters .field {
+    flex-basis: calc(50% - 12px);
+  }
+  .planning-month {
+    padding: 14px 10px;
+  }
+  .planning-month .calendar-weekdays,
+  .planning-days {
+    gap: 3px;
+  }
+  .planning-day {
+    min-height: 64px;
+    padding: 5px 2px;
+    align-items: center;
+  }
+  .planning-day-number {
+    align-self: center;
+  }
+  .planning-day-count {
+    font-size: 0.62rem;
+    text-align: center;
+  }
+  .planning-day-entries {
+    display: none;
+  }
+  .planning-day-signals {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  .planning-day-signals .planning-dot {
+    width: 5px;
+    height: 5px;
+    margin: 0;
+  }
+  .planning-legend {
+    gap: 8px 12px;
+  }
+}
