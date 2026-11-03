@@ -80,6 +80,7 @@ export async function verifyPlanning({ adminPage, employeePage, navigate, access
   const dialog = employeePage.getByRole('dialog', { name: 'Task details', exact: true })
   await expect(dialog).toContainText('Private synthetic task details')
   await expect(dialog.getByRole('button', { name: 'Adjust deadline', exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Delete task', exact: true })).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Start task', exact: true }).click()
   await expect(dialog).not.toBeVisible()
   await expect(row(employeePage, task.id)).toContainText('In-progress')
@@ -164,6 +165,9 @@ export async function verifyPlanning({ adminPage, employeePage, navigate, access
         .evaluateAll((nodes) => nodes.map((node) => node.dataset.taskId)),
       group.tasks.map((item) => item.id),
     )
+    await expect(
+      adminPage.locator(`.assignment-month[data-assignment-month="${group.month}"] [data-action="task-delete"]`),
+    ).toHaveCount(group.tasks.length)
   }
   await adminPage.getByLabel('Deadline month · IST', { exact: true }).selectOption(movedDate.slice(0, 7))
   await expect(adminPage.locator('.assignment-month')).toHaveCount(1)
@@ -261,7 +265,98 @@ export async function verifyPlanning({ adminPage, employeePage, navigate, access
   await expect(adminPage.locator('.planning-event-row')).toHaveCount(0)
   await poll(employeePage)
   await expect(employeePage.locator('.planning-event-row')).toHaveCount(0)
+
+  // Delete only a newly created synthetic task. Never delete the suite's shared fixtures.
+  const deletionTitle = 'Planning delete regression <img src=x>'
+  await act({
+    type: 'task.create',
+    title: deletionTitle,
+    assigneeId: employee.id,
+    clientId: task.clientId,
+    jobFunction: task.jobFunction,
+    deadline: `${nextDate}T08:00:00Z`,
+  })
+  const disposable = (await read()).tasks.find((item) => item.title === deletionTitle)
+  await poll(employeePage)
+  await expect(row(employeePage, disposable.id)).toBeVisible()
+  await navigate(adminPage, 'Assignments')
+  await adminPage.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await adminPage.getByLabel('Deadline month · IST', { exact: true }).selectOption(nextDate.slice(0, 7))
+  await dismissPopup(adminPage)
+  await dismissPopup(employeePage)
+  const assignment = adminPage
+    .locator('.assignment-month-tasks > div')
+    .filter({ has: adminPage.locator(`[data-task-id="${disposable.id}"]`) })
+  const deleteButton = assignment.getByRole('button', { name: 'Delete task', exact: true })
+  const confirmation = adminPage.getByRole('dialog', { name: 'Delete task', exact: true })
+  await expect(assignment.getByRole('button', { name: 'Adjust deadline', exact: true })).toBeVisible()
+  await deleteButton.click()
+  await expect(confirmation).toContainText(deletionTitle)
+  await expect(confirmation).toContainText('This cannot be undone.')
+  await expect(confirmation.locator('img')).toHaveCount(0)
+  await expect(confirmation.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+  await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(deleteButton).toBeFocused()
+  assert.ok(
+    (await read()).tasks.some((item) => item.id === disposable.id),
+    'Cancel keeps the task',
+  )
+
+  await deleteButton.click()
+  await act(
+    { type: 'task.transition', id: disposable.id, state: 'In-progress', version: disposable.version },
+    employeePage,
+  )
+  const stale = adminPage.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/portal/actions') && response.request().postDataJSON()?.type === 'task.delete',
+  )
+  await confirmation.getByRole('button', { name: 'Delete task', exact: true }).click()
+  assert.equal((await stale).status(), 409, 'Concurrent task changes block stale deletion')
+  await expect(confirmation.locator('#modal-feedback')).toContainText('Task changed; refresh and retry.')
+  await expect(confirmation).toBeVisible()
+  await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await adminPage.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(assignment).toContainText('In-progress')
+  await dismissPopup(adminPage)
+  await deleteButton.click()
+  await accessibility(adminPage, 'task deletion confirmation')
+  await adminPage.screenshot({ path: join(evidence, 'assignment-delete-confirmation.png') })
+  await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await assignment.scrollIntoViewIfNeeded()
+  await adminPage.screenshot({ path: join(evidence, 'assignment-delete-desktop.png') })
+  await adminPage.setViewportSize({ width: 375, height: 812 })
+  await assignment.scrollIntoViewIfNeeded()
+  await noOverflow(adminPage)
+  await accessibility(adminPage, 'assignment delete control mobile')
+  await expect(deleteButton).toBeVisible()
+  await adminPage.screenshot({ path: join(evidence, 'assignment-delete-mobile.png') })
+  await deleteButton.click()
+  const deleted = adminPage.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/portal/actions') && response.request().postDataJSON()?.type === 'task.delete',
+  )
+  await confirmation.getByRole('button', { name: 'Delete task', exact: true }).click()
+  assert.equal((await deleted).status(), 200)
+  await expect(confirmation).not.toBeVisible()
+  await expect(assignment).toHaveCount(0)
+  await expect(adminPage.locator('#feedback')).toContainText('Task deleted.')
+  await expect(adminPage.getByLabel('Deadline month · IST', { exact: true })).toBeFocused()
+  await expect(adminPage.getByLabel('Deadline month · IST', { exact: true })).toHaveValue(nextDate.slice(0, 7))
+  await poll(employeePage)
+  await expect(row(employeePage, disposable.id)).toHaveCount(0)
+  assert.equal(
+    (await read()).tasks.some((item) => item.id === disposable.id),
+    false,
+  )
+  await adminPage.setViewportSize({ width: 1440, height: 1000 })
+  await navigate(adminPage, 'Calendar')
+  await adminPage.getByRole('button', { name: 'Today', exact: true }).click()
+  if (nextDate.slice(0, 7) !== before.today.slice(0, 7))
+    await adminPage.getByRole('button', { name: 'Next month', exact: true }).click()
+  await dateButton(adminPage, nextDate).click()
+  await expect(row(adminPage, disposable.id)).toHaveCount(0)
   console.info(
-    `Planning checks passed: deadline sync, IST boundaries, month grouping, scope/permissions, live changes, keyboard, mobile/dark accessibility. Evidence: ${evidence}`,
+    `Planning checks passed: deadline sync, IST boundaries, month grouping, task deletion/cancel/conflicts, scope/permissions, live changes, keyboard, mobile/dark accessibility. Evidence: ${evidence}`,
   )
 }

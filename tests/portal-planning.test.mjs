@@ -202,3 +202,25 @@ test('assignment renderer uses separate month sections and does not lose complet
   assert.doesNotMatch(past, /data-test-task="own"/)
   assert.match(renderAssignmentGroups(snapshot, '2027-01', card, button), /No tasks assigned for this month/)
 })
+
+test('every admin assignment keeps delete and deadline controls through month filtering', () => {
+  const tasks = [
+    { id: 'overdue', state: 'Assigned', overdue: true },
+    { id: 'progress', state: 'In-progress' },
+    { id: 'assigned', state: 'Assigned' },
+    { id: 'completed', state: 'Completed' },
+    { id: 'approved', state: 'Approved' },
+  ].map((task) => ({ ...task, deadline: '2026-11-02T12:00:00Z' }))
+  const snapshot = { ...renderingSnapshot, user: { role: 'Admin' }, tasks }
+  const button = (label, action, id, cls) =>
+    `<button class="${cls}" data-action="${action}" data-id="${id}">${label}</button>`
+  for (const month of ['all', '2026-11']) {
+    const html = renderAssignmentGroups(snapshot, month, () => '', button)
+    for (const task of tasks) {
+      assert.ok(html.includes(button('Adjust deadline', 'deadline', task.id, 'small')))
+      assert.ok(html.includes(button('Delete task', 'task-delete', task.id, 'small danger')))
+    }
+  }
+  const employee = renderAssignmentGroups({ ...snapshot, user: { role: 'Employee' } }, 'all', () => '', button)
+  assert.doesNotMatch(employee, /task-delete|Delete task/)
+})

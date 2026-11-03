@@ -676,6 +676,86 @@ test('reactivation preserves identity and history, invalidates old credentials a
 
 const isoDay = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
 
+test('task deletion is admin-only, CSRF-protected, version-checked and leaves unrelated records intact', async (t) => {
+  const f = fixture()
+  t.after(() => f.close())
+  const { admin, auth } = await withAdmin(f)
+  const employee = { ...admin, id: 'employee', role: 'Employee', email: 'employee@example.test' }
+  const target = {
+    id: 'delete-me',
+    assigneeId: employee.id,
+    title: 'Private task title',
+    description: 'Private task description',
+    state: 'In-progress',
+    version: 2,
+    intervals: [{ from: '2026-11-03T04:00:00Z', to: null }],
+    events: [{ kind: 'assignment', actorId: admin.id }],
+  }
+  const state = f.state()
+  state.users.push(employee)
+  state.tasks.push(target, { id: 'keep-me', assigneeId: admin.id, state: 'Assigned', version: 1 })
+  state.clients.push({ id: 'client', name: 'Keep client' })
+  state.calendarEvents = [{ id: 'event', title: 'Keep shared event', date: '2026-11-03' }]
+  state.updates.push({ id: 'update', employeeId: employee.id, text: 'Keep daily update' })
+  state.notifications.push({ id: 'notice', employeeId: employee.id, taskId: target.id, title: 'Keep inbox history' })
+  f.save(state)
+  const employeeAuth = await f.as(employee)
+  const original = JSON.stringify(f.state())
+  const payload = { type: 'task.delete', id: target.id, version: target.version }
+  for (const id of [target.id, 'keep-me', 'missing']) {
+    assert.equal((await f.request('actions', { ...payload, id }, employeeAuth)).status, 403)
+  }
+  assert.equal((await f.request('actions', payload, { Cookie: auth.Cookie })).status, 403)
+  for (const version of [undefined, 1, 3, '2', null, 2.5]) {
+    const rejected = await f.request('actions', { ...payload, version }, auth)
+    assert.equal(rejected.status, 409)
+    assert.match((await rejected.json()).error, /refresh and retry/)
+  }
+  assert.equal((await f.request('actions', { ...payload, id: '' }, auth)).status, 400)
+  assert.equal((await f.request('actions', { ...payload, id: 'missing' }, auth)).status, 404)
+  assert.equal(JSON.stringify(f.state()), original, 'Rejected deletions must not mutate any state')
+  assert.equal((await f.request('actions', payload, auth)).status, 200)
+  const after = f.state()
+  assert.deepEqual(after.tasks, [state.tasks[1]])
+  for (const key of ['users', 'clients', 'calendarEvents', 'updates', 'notifications']) {
+    assert.deepEqual(after[key], state[key], `Deletion must preserve unrelated ${key}`)
+  }
+  assert.equal(after.audit.at(-1).action, 'task.delete')
+  assert.equal(after.audit.at(-1).subjectId, target.id)
+  assert.equal(after.audit.at(-1).actorId, admin.id)
+  assert.doesNotMatch(JSON.stringify(after.audit), /Private task/)
+  assert.equal((await f.request('actions', payload, auth)).status, 404, 'Repeated deletion is safely rejected')
+})
+
+test('admin deletion removes tasks from snapshots in every task state', async (t) => {
+  const f = fixture()
+  t.after(() => f.close())
+  const { admin, auth } = await withAdmin(f)
+  const state = f.state()
+  const states = ['Assigned', 'In-progress', 'Completed', 'Approved']
+  state.tasks = states.map((taskState) => ({
+    id: taskState,
+    title: taskState,
+    assigneeId: admin.id,
+    state: taskState,
+    version: 1,
+    deadline: '2026-11-03T12:00:00Z',
+    intervals: [],
+    events: [],
+  }))
+  f.save(state)
+  for (const taskState of states) {
+    const deleted = await f.request('actions', { type: 'task.delete', id: taskState, version: 1 }, auth)
+    assert.equal(deleted.status, 200)
+    const snapshot = await (await f.request('snapshot', undefined, auth)).json()
+    assert.equal(
+      snapshot.tasks.some((task) => task.id === taskState),
+      false,
+    )
+  }
+  assert.equal(f.state().tasks.length, 0)
+})
+
 test('Admins can assign Admin tasks and approvals require a rating', async (t) => {
   const f = fixture()
   t.after(() => f.close())

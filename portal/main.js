@@ -1523,10 +1523,16 @@ async function runWrite(payload, button, message, close = false) {
 }
 const values = (form) => Object.fromEntries(new FormData(form).entries())
 const recipients = (form) => new FormData(form).getAll('recipientIds')
-function confirmModal(title, message, action, id) {
+function confirmModal(title, message, action, id, version) {
+  const confirm = btn(
+    action === 'task-delete' ? 'Delete task' : 'Confirm',
+    'confirm-' + action,
+    id,
+    action === 'task-delete' ? 'danger' : 'primary',
+  )
   modal(
     title,
-    `<p>${esc(message)}</p><div class="actions">${btn('Cancel', 'close-modal')}${btn('Confirm', 'confirm-' + action, id, 'primary')}</div>`,
+    `<p>${esc(message)}</p><div class="actions">${btn('Cancel', 'close-modal')}${version === undefined ? confirm : confirm.replace('<button ', `<button data-version="${esc(version)}" `)}</div>`,
   )
 }
 async function handleAction(button) {
@@ -1871,6 +1877,26 @@ async function handleAction(button) {
   }
   if (action === 'confirm-note-delete') {
     await runWrite({ type: 'note.delete', id }, button, 'Note deleted.', true)
+    return
+  }
+  if (action === 'task-delete') {
+    if (!admin()) return
+    const task = arr(state.snapshot.tasks).find((task) => task.id === id)
+    if (task)
+      confirmModal(
+        'Delete task',
+        `Permanently delete “${task.title}”? It will be removed from assignments, calendars and reports, including its working-time and review history. This cannot be undone.`,
+        action,
+        id,
+        task.version,
+      )
+    return
+  }
+  if (action === 'confirm-task-delete') {
+    if (!admin()) return
+    await runWrite({ type: 'task.delete', id, version: Number(button.dataset.version) }, button, 'Task deleted.', true)
+    if (!document.querySelector('#modal:open'))
+      document.querySelector('[data-assignment-filter]')?.focus({ preventScroll: true })
     return
   }
   if (action === 'deadline') {

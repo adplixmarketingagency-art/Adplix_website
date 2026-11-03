@@ -173,7 +173,7 @@ export function renderAssignmentGroups(snapshot, month, renderCard, button) {
           `<section class="assignment-month" data-assignment-month="${esc(group.month)}"><div class="assignment-month-heading"><h3>${esc(group.label)}</h3><span class="fine">${countLabel(group.tasks.length, 'task')}${group.month === snapshot.today.slice(0, 7) ? ' · Current month' : ''}</span></div><div class="assignment-month-tasks">${group.tasks
             .map(
               (task) =>
-                `<div>${renderCard(task)}<div class="deadline-action">${button('Adjust deadline', 'deadline', task.id, 'small')}</div></div>`,
+                `<div>${renderCard(task)}<div class="actions deadline-action">${button('Adjust deadline', 'deadline', task.id, 'small')}${snapshot.user?.role === 'Admin' ? button('Delete task', 'task-delete', task.id, 'small danger') : ''}</div></div>`,
             )
             .join('')}</div></section>`,
       )

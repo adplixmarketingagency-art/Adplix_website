@@ -774,6 +774,16 @@ async function action(db, actorId, credentialVersion, a, env) {
         subjectId = task.id
         break
       }
+      case 'task.delete': {
+        admin(actor)
+        const taskId = required(a.id, 100)
+        t = (s.tasks || []).find((task) => task.id === taskId)
+        if (!t) fail('Task unavailable.', 404)
+        if (!Number.isSafeInteger(a.version) || a.version !== t.version) fail('Task changed; refresh and retry.', 409)
+        s.tasks = s.tasks.filter((task) => task.id !== taskId)
+        subjectId = taskId
+        break
+      }
       case 'task.transition': {
         t = s.tasks.find((x) => x.id === a.id)
         if (!t) fail('Task unavailable.', 404)
