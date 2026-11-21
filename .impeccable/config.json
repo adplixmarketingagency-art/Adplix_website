@@ -1,0 +1,15 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": ["portal/styles.css"],
+        "createdAt": "2026-11-21T06:44:50.987Z",
+        "reason": "Agent review: .unread marks unread messages, .calendar-days .today marks the current date, and .task-card.overdue marks overdue work. These functional status cues predate the light-mode fix (git commit 22333a19, October 9, 2026) and preserve the existing portal design."
+      }
+    ]
+  }
+}
