@@ -90,7 +90,7 @@ button:disabled {
 }
 .quiet {
   background: transparent;
-  color: #f7f5f1;
+  color: inherit;
   border-color: #706d67;
 }
 .full {
