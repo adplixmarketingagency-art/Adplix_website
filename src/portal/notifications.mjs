@@ -11,7 +11,7 @@ const TRUSTED = [
 
 const VAPID_KEYS = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT']
 
-// Device alerts deliberately contain no inbox content or caller-supplied copy.
+// Only deadline warnings include the task name; other device alerts use fixed copy.
 const ALERTS = Object.freeze({
   note: { title: 'Note', body: 'You have a new note. Sign in to view it.' },
   broadcast: { title: 'Broadcast', body: 'You have a new broadcast. Sign in to view it.' },
@@ -43,6 +43,7 @@ const ALERTS = Object.freeze({
   'task-approved': { title: 'Your task approved', body: 'Your task was approved. Sign in to view it.' },
   'task-revision': { title: 'Task needs revision', body: 'Your task needs revision. Sign in to view it.' },
   'task-deadline': { title: 'Task deadline changed', body: 'A task deadline changed. Sign in to view it.' },
+  'task-overdue-alert': { title: 'Overdue alert', body: 'A task deadline is approaching. Sign in to view it.' },
   workspace: { title: 'Adplix workspace', body: 'You have a new workspace update. Sign in to view it.' },
   test: { title: 'Test notification', body: 'This is a test device notification from Adplix.' },
 })
@@ -97,6 +98,17 @@ export async function sendBroadcastPush(env, subscriptions = [], { kind } = {}) 
     const envelope = entry && typeof entry === 'object' && Object.hasOwn(entry, 'subscription')
     const subscription = envelope ? entry.subscription : entry
     const selectedKind = (envelope && safeKind(entry.kind)) || safeKind(kind) || 'workspace'
+    const taskTitle = envelope && typeof entry.taskTitle === 'string' ? entry.taskTitle.trim() : ''
+    const reminderHours = envelope && entry.reminderHours
+    const alert =
+      selectedKind === 'task-overdue-alert' && taskTitle && taskTitle.length <= 200 && [24, 2].includes(reminderHours)
+        ? {
+            title: `Overdue alert: ${taskTitle}`,
+            body: `"${taskTitle}" is due within ${reminderHours} hours. Complete it before it becomes overdue.`,
+            taskTitle,
+            reminderHours,
+          }
+        : ALERTS[selectedKind]
     if (!trustedEndpoint(subscription?.endpoint)) {
       counts.skipped++
       return
@@ -105,7 +117,7 @@ export async function sendBroadcastPush(env, subscriptions = [], { kind } = {}) 
     try {
       payload = await buildPushPayload(
         {
-          data: JSON.stringify({ kind: selectedKind, ...ALERTS[selectedKind] }),
+          data: JSON.stringify({ kind: selectedKind, ...alert }),
           options: { ttl: 3600 },
         },
         subscription,

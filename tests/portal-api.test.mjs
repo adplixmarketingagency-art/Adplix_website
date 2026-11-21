@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { handlePortalApi } from '../src/portal/api.mjs'
+import { handlePortalApi, sendTaskDeadlineReminders } from '../src/portal/api.mjs'
+import worker from '../src/index.js'
 import { tokenHash } from '../src/portal/auth.mjs'
 import { webcrypto } from 'node:crypto'
 
@@ -141,6 +142,173 @@ const asUser = (fixture, user, token = 'a'.repeat(64)) => {
     'Content-Type': 'application/json',
   }
 }
+
+const deadlineTask = (id, assigneeId = 'employee', overrides = {}) => ({
+  id,
+  title: `Campaign ${id}`,
+  assigneeId,
+  deadline: '2026-12-02T12:00:00.000Z',
+  state: 'Assigned',
+  version: 1,
+  intervals: [],
+  events: [],
+  ...overrides,
+})
+const deadlineCheck = async (f, at, env = {}) => {
+  await sendTaskDeadlineReminders({ PORTAL_DB: f.db, ...env }, new Date(at))
+}
+
+test('a delayed scheduled invocation uses execution time and does not warn about an already overdue task', async () => {
+  const now = Date.now()
+  const f = fixture(
+    [{ id: 'employee', role: 'Employee', active: true }],
+    [deadlineTask('late-cron', 'employee', { deadline: new Date(now - 60_000).toISOString() })],
+  )
+  await worker.scheduled({ scheduledTime: now - 2 * 60 * 60_000 }, { PORTAL_DB: f.db })
+  assert.deepEqual(f.state.notifications, [])
+})
+
+test('scheduled deadline alerts reach Admin and Employee assignees once at 24h and 2h, even after clearing the inbox', async () => {
+  const employee = { id: 'employee', role: 'Employee', name: 'Employee', active: true }
+  const admin = { id: 'admin', role: 'Admin', name: 'Admin', active: true }
+  const f = fixture([employee, admin], [deadlineTask('employee-task'), deadlineTask('admin-task', 'admin')])
+  const employeeHeaders = asUser(f, employee)
+  const adminHeaders = asUser(f, admin, 'b'.repeat(64))
+  const inbox = async (headers) => (await (await callWith(f, 'snapshot', 'GET', headers)).json()).notifications
+
+  await deadlineCheck(f, '2026-12-01T11:59:59.999Z')
+  assert.deepEqual(f.state.notifications, [])
+  await deadlineCheck(f, '2026-12-01T12:00:00.000Z')
+  assert.equal(f.state.notifications.length, 2)
+  for (const [headers, title] of [
+    [employeeHeaders, 'Campaign employee-task'],
+    [adminHeaders, 'Campaign admin-task'],
+  ]) {
+    const [alert] = await inbox(headers)
+    assert.equal(alert.kind, 'task-overdue-alert')
+    assert.equal(alert.title, `Overdue alert: ${title}`)
+    assert.match(alert.text, /within 24 hours/)
+    assert.ok(alert.text.includes(title))
+  }
+  assert.equal((await callWith(f, 'actions', 'POST', employeeHeaders, { type: 'notification.clearAll' })).status, 200)
+  await deadlineCheck(f, '2026-12-01T12:01:00.000Z')
+  await deadlineCheck(f, '2026-12-02T09:59:59.999Z')
+  assert.deepEqual(await inbox(employeeHeaders), [])
+  assert.equal((await inbox(adminHeaders)).length, 1)
+
+  await deadlineCheck(f, '2026-12-02T10:00:00.000Z')
+  assert.equal(f.state.notifications.length, 3)
+  const [alert] = await inbox(employeeHeaders)
+  assert.match(alert.text, /within 2 hours/)
+  assert.equal(alert.title, 'Overdue alert: Campaign employee-task')
+  await deadlineCheck(f, '2026-12-02T10:01:00.000Z')
+  await deadlineCheck(f, '2026-12-02T12:00:00.000Z')
+  assert.equal(f.state.notifications.length, 3)
+  assert.ok(f.state.tasks.every((task) => task.version === 1))
+})
+
+test('deadline checks skip completed, approved, overdue and unavailable assignments and send only the current warning for short deadlines', async () => {
+  const f = fixture(
+    [
+      { id: 'employee', role: 'Employee', active: true },
+      { id: 'disabled', role: 'Admin', active: false },
+    ],
+    [
+      deadlineTask('future', 'employee', { deadline: '2026-12-03T12:00:00Z' }),
+      deadlineTask('working', 'employee', { state: 'In-progress' }),
+      deadlineTask('completed', 'employee', { state: 'Completed' }),
+      deadlineTask('approved', 'employee', { state: 'Approved' }),
+      deadlineTask('disabled', 'disabled'),
+      deadlineTask('missing', 'missing'),
+      deadlineTask('invalid', 'employee', { deadline: 'invalid' }),
+      deadlineTask('overdue', 'employee', { deadline: '2026-12-01T12:00:00Z' }),
+      deadlineTask('due-now', 'employee', { deadline: '2026-12-02T10:00:00Z' }),
+      deadlineTask('short', 'employee', { deadline: '2026-12-02T16:30:00+05:30' }),
+    ],
+  )
+  await deadlineCheck(f, '2026-12-02T10:00:00.000Z')
+  assert.deepEqual(
+    f.state.notifications.map((alert) => alert.taskId),
+    ['working', 'short'],
+  )
+  assert.ok(f.state.notifications.every((alert) => /within 2 hours/.test(alert.text)))
+})
+
+test('deadline changes and reassignment start fresh reminder delivery for the current assignee', async () => {
+  const admin = { id: 'admin', role: 'Admin', active: true }
+  const f = fixture([admin, { id: 'employee', role: 'Employee', active: true }], [deadlineTask('rescheduled')])
+  await deadlineCheck(f, '2026-12-01T12:00:00.000Z')
+  assert.equal(f.state.notifications.length, 1)
+  assert.equal(
+    (
+      await callWith(f, 'actions', 'POST', asUser(f, admin), {
+        type: 'task.deadline',
+        id: 'rescheduled',
+        version: 1,
+        deadline: '2026-12-03T12:00:00Z',
+      })
+    ).status,
+    200,
+  )
+  await deadlineCheck(f, '2026-12-01T12:01:00.000Z')
+  assert.equal(f.state.notifications.filter((alert) => alert.kind === 'task-overdue-alert').length, 1)
+  await deadlineCheck(f, '2026-12-02T12:00:00.000Z')
+  assert.equal(f.state.notifications.filter((alert) => alert.kind === 'task-overdue-alert').length, 2)
+  f.state.tasks[0].assigneeId = 'admin'
+  await deadlineCheck(f, '2026-12-02T12:01:00.000Z')
+  assert.equal(f.state.notifications.at(-1).employeeId, 'admin')
+  assert.equal(f.state.notifications.filter((alert) => alert.kind === 'task-overdue-alert').length, 3)
+  assert.equal(f.state.tasks[0].version, 2)
+})
+
+test('overlapping scheduled checks commit only one alert per task and reminder threshold', async () => {
+  const f = fixture([{ id: 'employee', role: 'Employee', active: true }], [deadlineTask('concurrent')])
+  await Promise.all([deadlineCheck(f, '2026-12-01T12:00:00.000Z'), deadlineCheck(f, '2026-12-01T12:00:00.000Z')])
+  assert.equal(f.state.notifications.length, 1)
+})
+
+test('scheduled alerts push every task to owned devices after inbox commit, including batches above 20 deliveries', async () => {
+  const { env, keys } = await pushKeys()
+  const f = fixture(
+    [
+      { id: 'employee', role: 'Employee', active: true },
+      { id: 'admin', role: 'Admin', active: true },
+      { id: 'other', role: 'Employee', active: true },
+    ],
+    [...Array.from({ length: 11 }, (_, index) => deadlineTask(String(index))), deadlineTask('admin', 'admin')],
+  )
+  const phone = device(keys, 'phone')
+  const desktop = device(keys, 'desktop')
+  const shared = device(keys, 'shared')
+  f.state.subscriptions = [
+    { employeeId: 'employee', subscription: phone },
+    { employeeId: 'employee', subscription: phone },
+    { employeeId: 'employee', subscription: desktop },
+    { employeeId: 'admin', subscription: device(keys, 'admin') },
+    { employeeId: 'other', subscription: device(keys, 'other') },
+    { employeeId: 'employee', subscription: shared },
+    { employeeId: 'other', subscription: shared },
+  ]
+  const requests = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url) => {
+    assert.equal(f.state.notifications.length, 12, 'Inbox delivery must commit before contacting push providers')
+    requests.push(url)
+    return new Response(null, { status: url === desktop.endpoint ? 410 : 201 })
+  }
+  try {
+    await deadlineCheck(f, '2026-12-01T12:00:00.000Z', env)
+    assert.equal(requests.length, 23)
+    assert.equal(requests.filter((url) => url === phone.endpoint).length, 11)
+    assert.equal(requests.filter((url) => url.endsWith('/admin')).length, 1)
+    assert.ok(requests.every((url) => !url.endsWith('/other') && !url.endsWith('/shared')))
+    assert.ok(f.state.subscriptions.every((entry) => entry.subscription.endpoint !== desktop.endpoint))
+    await deadlineCheck(f, '2026-12-01T12:01:00.000Z', env)
+    assert.equal(requests.length, 23)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
 test('employee unchanged email edit preserves session, changed email invalidates and audit contains no credentials', async () => {
   const admin = {
     id: 'admin',

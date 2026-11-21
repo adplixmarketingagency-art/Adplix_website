@@ -178,6 +178,7 @@ const NOTIFICATION_TYPE_LABELS = Object.freeze({
   'task-approved': 'Your task approved',
   'task-revision': 'Task needs revision',
   'task-deadline': 'Task deadline changed',
+  'task-overdue-alert': 'Overdue alert',
   workspace: 'Workspace',
   test: 'Test notification',
 })

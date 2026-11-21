@@ -66,12 +66,37 @@ test('browser push uses whitelisted type copy, generic legacy fallback, and open
     ['task-approved', 'Your task approved', 'Your task was approved. Sign in to view it.'],
     ['task-revision', 'Task needs revision', 'Your task needs revision. Sign in to view it.'],
     ['task-deadline', 'Task deadline changed', 'A task deadline changed. Sign in to view it.'],
+    ['task-overdue-alert', 'Overdue alert', 'A task deadline is approaching. Sign in to view it.'],
     ['workspace', 'Adplix workspace', 'You have a new workspace update. Sign in to view it.'],
     ['test', 'Test notification', 'This is a test device notification from Adplix.'],
   ]) {
     const alert = await deliver(JSON.stringify({ kind, title: 'Private title', body: 'Private note and credentials' }))
     assert.equal(alert.title, title)
     assert.equal(alert.options.body, body)
+  }
+  for (const reminderHours of [24, 2]) {
+    const alert = await deliver(
+      JSON.stringify({
+        kind: 'task-overdue-alert',
+        taskTitle: 'Launch campaign',
+        reminderHours,
+        title: 'Private title',
+        body: 'Private note and credentials',
+      }),
+    )
+    assert.equal(alert.title, 'Overdue alert: Launch campaign')
+    assert.ok(alert.options.body.includes('Launch campaign'))
+    assert.ok(alert.options.body.includes(`within ${reminderHours} hours`))
+  }
+  for (const metadata of [
+    { taskTitle: '', reminderHours: 24 },
+    { taskTitle: 'x'.repeat(201), reminderHours: 2 },
+    { taskTitle: { secret: 'Private title' }, reminderHours: 24 },
+    { taskTitle: 'Private title', reminderHours: 1 },
+  ]) {
+    const alert = await deliver(JSON.stringify({ kind: 'task-overdue-alert', ...metadata }))
+    assert.equal(alert.title, 'Overdue alert')
+    assert.equal(alert.options.body, 'A task deadline is approaching. Sign in to view it.')
   }
   for (const text of [
     null,

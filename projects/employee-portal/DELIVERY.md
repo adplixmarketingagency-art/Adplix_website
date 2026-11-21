@@ -1,5 +1,15 @@
 # Employee Portal — Delivery and Setup
 
+## Task deadline alerts
+
+Assigned and In-progress tasks send one **Overdue alert: {task name}** when the deadline is within 24 hours, and another when it is within 2 hours. Every active assignee is eligible, including Admins. Completed, Approved, deleted, already overdue and inactive-assignee tasks are skipped. A short assignment or a late check receives only the current warning, rather than both at once.
+
+The Worker checks deadlines every minute through the cron trigger in `wrangler.toml`, even when nobody has the portal open. Deploy the Worker with this configuration to activate the schedule; pushing static assets alone does not activate scheduled handlers. Existing state needs no database migration. Delivery markers live on the task and are saved atomically with the inbox notification, so concurrent checks and clearing the inbox cannot replay a warning. A changed deadline or assignee starts a fresh reminder schedule.
+
+Inbox delivery is persistent. Optional device delivery uses existing owned subscriptions and VAPID settings; deadline alerts include the task name and reminder period on the device. As with other portal push alerts, provider/network failures do not roll back the inbox and are not retried automatically. Browser permission, subscription and device settings still determine whether a device alert appears.
+
+Verification: Node 22 `npm test` passed **194 tests**. Lint, formatting, both marketing and portal browser suites, production build, deployment packaging dry run and `git diff --check` passed. Regression coverage includes exact 24h/2h boundaries, Admin/Employee inbox isolation, cleared inboxes, overlapping checks, changed deadlines/assignees, inactive/completed/overdue tasks, delayed cron execution, batches above 20 device deliveries and decrypted task-name push payloads. The local Graphify code graph was updated. No production deployment or real-device push verification was performed.
+
 ## Overview, theme and mobile navigation polish
 
 Overview now includes a **Completed work** metric for both Admin and Employee dashboards, counting current Completed/Approved work. Daily updates no longer become overdue at 11:00; the normal deadline is the **19:00 IST business-day close**, with existing Sunday, leave, permission and lifecycle exemptions preserved.
@@ -254,7 +264,7 @@ Registration requires an existing active Admin. Public requests are rate-limited
 
 - Initial storage uses one D1 JSON business document with atomic revision comparison, plus separate session/rate-limit tables. This avoids lost updates but is **not an unlimited-scale relational design**. It refuses writes above 1,500,000 UTF-8 bytes. Before sustained production use, plan normalized tables/retention and migrate safely; history is not silently deleted to fit the cap.
 - Rate-limit/session expiry is enforced, but periodic cleanup/retention and Admin MFA/passkeys are not implemented. User records and audit data need agreed retention. Archived accounts/clients remain in history.
-- Browser push delivery was tested for guarded destinations and expiry handling, not with live VAPID/browser delivery. Only configured known push provider domains are allowed. Scheduled reminders are not implemented; daily status is calculated dynamically and UI polls on minute boundaries.
+- Browser push delivery was tested for guarded destinations and expiry handling, not with live VAPID/browser delivery. Only configured known push provider domains are allowed. Task deadline reminders use the Worker cron described above; daily status is calculated dynamically and UI polls on minute boundaries.
 - Initial leave scope excludes cancellation, leave balances, half-day leave, holidays and payroll. No automatic deadline extensions. In-progress reassignment and unlocking approved tasks are not implemented.
 - Trend graphs count completion **events**, including repeated completion after reopening; current-state counts count tasks. Month/year/custom date filters select task counts by creation date and trends by event date. Employee filters scope tasks, charts, updates, absences, and login records to that employee. Charts/export document these distinct semantics.
 - Current UI shows graphs and individual metrics, not a composite productivity score. Concurrent durations may overlap and are not attendance. No surveillance is included.

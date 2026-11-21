@@ -3,6 +3,10 @@
 name = "adplix-portal-local"
 main = "src/index.js"
 compatibility_date = "2026-09-12"
+
+[triggers]
+crons = ["* * * * *"]
+
 # Local verification intentionally has no VAPID secrets; browser push remains
 # disabled until the production Worker receives the complete VAPID set.
 

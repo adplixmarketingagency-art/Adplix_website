@@ -29,6 +29,7 @@ const ALERTS = Object.freeze({
   'task-approved': { title: 'Your task approved', body: 'Your task was approved. Sign in to view it.' },
   'task-revision': { title: 'Task needs revision', body: 'Your task needs revision. Sign in to view it.' },
   'task-deadline': { title: 'Task deadline changed', body: 'A task deadline changed. Sign in to view it.' },
+  'task-overdue-alert': { title: 'Overdue alert', body: 'A task deadline is approaching. Sign in to view it.' },
   workspace: { title: 'Adplix workspace', body: 'You have a new workspace update. Sign in to view it.' },
   test: { title: 'Test notification', body: 'This is a test device notification from Adplix.' },
 })
@@ -38,13 +39,22 @@ self.addEventListener('install', (event) => event.waitUntil(self.skipWaiting()))
 self.addEventListener('activate', (event) => event.waitUntil(clients.claim()))
 
 self.addEventListener('push', (event) => {
-  let kind
+  let payload
   try {
-    kind = JSON.parse(event.data?.text() || '{}')?.kind
+    payload = JSON.parse(event.data?.text() || '{}')
   } catch {
     // Legacy or malformed payloads show only generic copy.
   }
-  const alert = ALERTS[typeof kind === 'string' && Object.hasOwn(ALERTS, kind) ? kind : 'workspace']
+  const kind = payload?.kind
+  const taskTitle = typeof payload?.taskTitle === 'string' ? payload.taskTitle.trim() : ''
+  const reminderHours = payload?.reminderHours
+  const alert =
+    kind === 'task-overdue-alert' && taskTitle && taskTitle.length <= 200 && [24, 2].includes(reminderHours)
+      ? {
+          title: `Overdue alert: ${taskTitle}`,
+          body: `"${taskTitle}" is due within ${reminderHours} hours. Complete it before it becomes overdue.`,
+        }
+      : ALERTS[typeof kind === 'string' && Object.hasOwn(ALERTS, kind) ? kind : 'workspace']
   event.waitUntil(
     Promise.all([
       self.registration.showNotification(alert.title, {

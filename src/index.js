@@ -1,11 +1,14 @@
 import { securityHeaders } from './security-headers.mjs'
-import { handlePortalApi } from './portal/api.mjs'
+import { handlePortalApi, sendTaskDeadlineReminders } from './portal/api.mjs'
 export { PortalPasswordHasher } from './portal/password-object.mjs'
 
 const portalPolicy =
   "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; frame-src 'none'; worker-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; upgrade-insecure-requests"
 
 export default {
+  async scheduled(_controller, env) {
+    await sendTaskDeadlineReminders(env)
+  },
   async fetch(request, env, ctx) {
     const url = new URL(request.url)
     const isApi = url.pathname === '/api/portal' || url.pathname.startsWith('/api/portal/')

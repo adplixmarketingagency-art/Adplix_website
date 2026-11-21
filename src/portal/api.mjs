@@ -117,6 +117,7 @@ const NOTIFICATION_KINDS = new Set([
   'task-approved',
   'task-revision',
   'task-deadline',
+  'task-overdue-alert',
   'workspace',
   'test',
 ])
@@ -200,6 +201,62 @@ const cleanExpiredPush = async (db, result) => {
     state.subscriptions = (state.subscriptions || []).filter((item) => !expired.has(item.subscription?.endpoint))
   })
 }
+
+export async function sendTaskDeadlineReminders(env, now = new Date()) {
+  const db = database(env)
+  const push = await mutate(db, (state) => {
+    const rows = []
+    const hour = 60 * 60_000
+    for (const task of state.tasks || []) {
+      if (!['Assigned', 'In-progress'].includes(task.state) || !team(active(state, task.assigneeId) || {})) continue
+      const remaining = Date.parse(task.deadline) - now.getTime()
+      if (!Number.isFinite(remaining) || remaining <= 0 || remaining > 24 * hour) continue
+      // A late check or short assignment gets the current warning, never two alerts at once.
+      const reminderHours = remaining <= 2 * hour ? 2 : 24
+      const previous = task.deadlineReminders
+      const sentHours =
+        previous?.deadline === task.deadline && previous?.assigneeId === task.assigneeId ? previous.sentHours : []
+      if (sentHours.includes(reminderHours)) continue
+      const metadata = {
+        kind: 'task-overdue-alert',
+        taskId: task.id,
+        taskTitle: task.title,
+        reminderHours,
+      }
+      notify(
+        state,
+        task.assigneeId,
+        `Overdue alert: ${task.title}`,
+        `"${task.title}" is due within ${reminderHours} hours. Complete it before it becomes overdue.`,
+        metadata,
+      )
+      // Keep delivery state on the task so clearing the inbox cannot replay a reminder.
+      task.deadlineReminders = {
+        deadline: task.deadline,
+        assigneeId: task.assigneeId,
+        sentHours: [...sentHours, reminderHours],
+      }
+      rows.push({ employeeId: task.assigneeId, ...metadata })
+    }
+    const subscriptions = ownedSubscriptionsFor(state, new Set(rows.map((row) => row.employeeId)), Infinity)
+    return rows.flatMap((row) =>
+      subscriptions
+        .filter((entry) => entry.employeeId === row.employeeId)
+        .map(({ subscription }) => ({
+          subscription,
+          kind: row.kind,
+          taskTitle: row.taskTitle,
+          reminderHours: row.reminderHours,
+        })),
+    )
+  })
+  // Each sender call is bounded; every task/device pair still gets its own alert.
+  for (let index = 0; index < push.length; index += MAX_ACTION_PUSHES) {
+    const result = await sendBroadcastPush(env, push.slice(index, index + MAX_ACTION_PUSHES))
+    await cleanExpiredPush(db, result)
+  }
+}
+
 // No passwords, free-form content, endpoint URLs, or request payloads belong in audit records.
 const audit = (state, actorId, action, subjectId = null) =>
   (state.audit ||= []).push({ id: id(), actorId, action, at: iso(), subjectId })

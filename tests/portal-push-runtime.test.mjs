@@ -235,6 +235,26 @@ test('workerd prepares and sends an interoperable synthetic Web Push payload', a
       assert.equal(decrypted.title, title)
       assert.ok(!JSON.stringify(decrypted).includes('Private'))
     }
+    for (const reminderHours of [24, 2]) {
+      requests.length = 0
+      const reminder = {
+        subscription: keys.subscription,
+        kind: 'task-overdue-alert',
+        taskTitle: 'Launch campaign',
+        reminderHours,
+        title: 'Private title',
+        body: 'Private credentials',
+      }
+      assert.equal((await dispatch('/send', undefined, [reminder])).sent, 1)
+      const decrypted = await decryptPush(requests[0].body, keys)
+      assert.equal(decrypted.kind, 'task-overdue-alert')
+      assert.equal(decrypted.title, 'Overdue alert: Launch campaign')
+      assert.ok(decrypted.body.includes('Launch campaign'))
+      assert.ok(decrypted.body.includes(`within ${reminderHours} hours`))
+      assert.equal(decrypted.taskTitle, 'Launch campaign')
+      assert.equal(decrypted.reminderHours, reminderHours)
+      assert.ok(!JSON.stringify(decrypted).includes('Private'))
+    }
     requests.length = 0
     providerStatus = 302
     const redirected = await dispatch('/send')
